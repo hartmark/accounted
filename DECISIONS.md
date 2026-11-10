@@ -1242,3 +1242,13 @@ Keep the current calendar month here. Archive completed months verbatim under `d
 
 [2026-11-08] Browser latency tests use an isolated Podman Supabase stack and deterministic ten-year synthetic SIE history. Production source snapshots exclude environment files. Measured cold requests have a 5 s cap, then navigation has 3 s and interactions 1 s, with no retries.
 [2026-11-10] Browser fixtures use Europe/Stockholm like the isolated server: mismatched UTC dates after Swedish midnight selected an empty historical reskontra while readiness expected live open invoices. Keep real clocks, row assertions and 5/3/1-second budgets.
+
+[2026-11-09] Move collapsible navigation and ledger presentation into a dedicated UI PR. Reports reuse the existing catalog, and inactive means zero closing balance with no vouchers in the selected interval.
+
+[2026-11-09] Responsive report tables keep one DOM and derive narrow-screen labels from their headers. Disclosure surfaces preserve native controls and selection. Per-tab, per-company view state and delayed scroll restoration retain context after voucher navigation.
+
+[2026-11-09] Mobile tables reuse one native table DOM with bordered, spaced row cards. Infer titles and selection columns from existing headers; place final actions in a full-width footer. Expanded details share their row outline.
+
+[2026-11-09] Reuse wrapping workflow steps and labelled responsive form rows for narrow screens; preserve native controls and desktop columns. Mobile audits check the document client width and nested scroll regions, while external docs redirects stay outside the self-hosted audit.
+
+[2026-11-09] Show calendar weeks as seven day cards on phones; the time matrix clipped days at narrow widths. Both views use the same dates and event arrays and preserve the existing day-navigation callback.
