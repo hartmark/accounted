@@ -1,5 +1,7 @@
 'use client'
 
+import { expandableSurface } from '@/components/ui/expandable-surface'
+
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useTranslations } from 'next-intl'
 import { Button } from '@/components/ui/button'
@@ -46,8 +48,11 @@ interface DocumentRecord {
   referenced?: boolean
 }
 
+import type { UnderlagReference } from '@/lib/core/bookkeeping/journal-entry-references'
+
 interface JournalEntryAttachmentsProps {
   journalEntryId: string
+  references?: UnderlagReference[]
   onCountChange?: (count: number) => void
   /**
    * 'section': embedded under a DetailSection kicker that already names the
@@ -79,6 +84,7 @@ function isPreviewable(type: string | null): boolean {
 
 export default function JournalEntryAttachments({
   journalEntryId,
+  references,
   onCountChange,
   variant = 'default',
 }: JournalEntryAttachmentsProps) {
@@ -107,21 +113,24 @@ export default function JournalEntryAttachments({
   const onCountChangeRef = useRef(onCountChange)
   onCountChangeRef.current = onCountChange
 
+  const documentReadGeneration = useRef(0)
   const fetchDocuments = useCallback(async () => {
+    const generation = ++documentReadGeneration.current
     try {
-      const [documentsRes, referencesRes] = await Promise.all([
+      const [documentsRes, referencesData] = await Promise.all([
         fetch(`/api/documents?journal_entry_id=${journalEntryId}&current_only=true`),
-        fetch(`/api/bookkeeping/journal-entries/${journalEntryId}/references`),
+        references !== undefined ? Promise.resolve(references) :
+          fetch(`/api/bookkeeping/journal-entries/${journalEntryId}/references`)
+            .then(async response => response.ok ? (await response.json()).data?.references ?? [] : []),
       ])
       const { data: directDocuments } = await documentsRes.json()
       const direct = (directDocuments || []) as DocumentRecord[]
       const directIds = new Set(direct.map((document) => document.id))
 
       let referenced: DocumentRecord[] = []
-      if (referencesRes.ok) {
-        const { data: referenceData } = await referencesRes.json()
+      if (referencesData) {
         const documentIds = Array.from(new Set<string>(
-          (referenceData?.references || [])
+          referencesData
             .map((reference: { document_id?: string }) => reference.document_id)
             .filter((documentId: string | undefined): documentId is string => (
               Boolean(documentId) && !directIds.has(documentId as string)
@@ -146,17 +155,19 @@ export default function JournalEntryAttachments({
       }
 
       const allDocuments = [...direct, ...referenced]
+      if (generation !== documentReadGeneration.current) return
       setDocuments(allDocuments)
       onCountChangeRef.current?.(allDocuments.length)
     } catch {
       // Non-critical: silently ignore
     } finally {
-      setLoading(false)
+      if (generation === documentReadGeneration.current) setLoading(false)
     }
-  }, [journalEntryId])
+  }, [journalEntryId, references])
 
   useEffect(() => {
     fetchDocuments()
+    return () => { documentReadGeneration.current += 1 }
   }, [fetchDocuments])
 
   // Refresh documents when uploads complete
@@ -361,10 +372,13 @@ export default function JournalEntryAttachments({
           {documents.map((doc) => {
             const isReplacing = replacingDocId === doc.id
             return (
-              <div key={doc.id}>
+              <div key={doc.id} {...(isPreviewable(doc.mime_type) ? expandableSurface(() => handlePreviewToggle(doc)) : {})}>
                 <div className="flex items-center gap-2 text-sm py-1.5 px-2 rounded-sm bg-muted/50">
                   {isPreviewable(doc.mime_type) ? (
                     <button
+                      type="button"
+                      aria-label={t(expandedDoc === doc.id ? 'hide_preview' : 'show_preview')}
+                      aria-expanded={expandedDoc === doc.id}
                       onClick={() => handlePreviewToggle(doc)}
                       className="shrink-0 hover:text-primary transition-colors"
                     >

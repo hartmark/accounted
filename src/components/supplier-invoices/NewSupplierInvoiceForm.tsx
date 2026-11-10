@@ -1,5 +1,7 @@
 'use client'
 
+import { ResponsiveTable } from '@/components/ui/responsive-table'
+
 import { Fragment, useState, useEffect, useRef, useCallback, type ReactNode } from 'react'
 import { useRouter } from 'next/navigation'
 import { useTranslations } from 'next-intl'
@@ -246,7 +248,7 @@ export default function NewSupplierInvoiceForm({
   >(null)
 
   // Pre-submit duplicate advisory (change 3): debounced lookup against
-  // GET /api/supplier-invoices/exists; the create route's 409 stays the backstop.
+  // GET /api/supplier-invoices/exists; reused references are allowed.
   const [duplicateWarning, setDuplicateWarning] = useState<{
     number: string
     existingId: string | null
@@ -655,9 +657,8 @@ export default function NewSupplierInvoiceForm({
   }, [watchedInvoiceDate])
 
   // Pre-submit duplicate advisory (change 3): debounced, sequence-guarded and
-  // purely advisory: the create route's structured 409 stays the enforcement
-  // point, and the exists endpoint mirrors the unique index's
-  // credited/reversed exclusion so re-issues never warn.
+  // purely advisory: a reused reference may be a separate invoice. The
+  // exists endpoint excludes credited/reversed records.
   useEffect(() => {
     const supplierId = watchedSupplierId
     const number = (watchedInvoiceNumber || '').trim()
@@ -683,7 +684,7 @@ export default function NewSupplierInvoiceForm({
             : null,
         )
       } catch {
-        // Advisory only; the 409 backstop still catches real duplicates.
+        // Advisory only; a lookup failure must not prevent registration.
       }
     }, 400)
     return () => clearTimeout(timer)
@@ -1966,7 +1967,7 @@ export default function NewSupplierInvoiceForm({
               </div>
             )}
 
-            <div className="overflow-x-auto">
+            <ResponsiveTable primaryColumn={2}>
               <table className="w-full min-w-[560px] border-collapse text-[13px]">
                 <thead className="[&_th]:font-medium [&_th]:text-[11px] [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
                   <tr className="border-b border-border text-left">
@@ -2188,7 +2189,7 @@ export default function NewSupplierInvoiceForm({
                   </tr>
                 </tfoot>
               </table>
-            </div>
+            </ResponsiveTable>
           </section>
 
           {/* ── Förval ───────────────────────────────────────────── */}

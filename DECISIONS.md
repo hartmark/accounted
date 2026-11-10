@@ -1226,3 +1226,29 @@ Keep the current calendar month here. Archive completed months verbatim under `d
 [2026-10-03] Skatteverket refusals log only status, period and SKV kod, not the response body: an EF body can echo the owner's personnummer, and the full body already reaches the user in the error response; no-console is an error in the extension.
 [2026-10-03] Bank booking doors refuse via one assertTransactionBookable (pointer or bank_line link to a posted verifikat): code-only fix approved; no DB trigger guarded this before and none is removed, a trigger backstop is deferred to its own PR; categorize fast path stays pointer-keyed, book route now rebooks a reversed pointer like the core.
 [2026-10-03] MCP create_invoice staging and commit both build through buildStagedInvoice (the shared buildInvoiceWriteData) instead of adding the 1660-on-a-VAT-line check to the hand copy: one definition, so ROT/RUT, accrual, preview VAT and the reverse-charge notice cannot drift again.
+[2026-11-07] Provider resync appends only new source references and reviews changed posted content; semantic register hashes skip unchanged records. Select all source years by default and retain exact selected periods, instead of replacing whole years or keeping a rolling limit.
+[2026-11-08] Provider underlag resolves against non-retired SIE imports; undone/replaced batches are historical, while genuine accounting reversals remain eligible. Diagnose unresolved matches read-only instead of guessing targets or duplicating source files.
+[2026-11-08] Skip mapping/VAT approval for a fully compared zero-addition provider sync with resolved targets, even if metadata changed. Leave new-voucher and unknown-year gates intact; never infer or rewrite VAT choices to suppress an irrelevant prompt.
+[2026-11-08] Suppress archived account-name differences only when an incoming identity mapping already matches the live company chart. Keep SRU, dimension and balance comparisons intact; do not write acknowledgments or rewrite archives to make a no-op sync look unchanged.
+[2026-11-08] Stream underlag progress over the existing POST instead of shortening slices and repeatedly relisting provider files. Keep actual invoice exclusion reasons separate from imported payables that are unpaid but not yet due; derive both from stored/current facts.
+
+[2026-11-08] Reuse retained Bokio upload mappings for discovery and retries: trust an upload ID only when its retained document belongs to the currently resolved dated voucher. Offer remaining files rather than the full provider list.
+
+[2026-11-08] Expose the existing no-document migration choice in the API wizard and send it per SIE job. Scope it to newly created vouchers so a no-change resync cannot reapply exemptions the user later removed.
+[2026-11-08] Remove historical receivable references before sandbox voucher teardown: their NO ACTION foreign keys otherwise block cleanup. Patch the current routine with an anchored new migration and retain its existing sandbox authorization checks.
+
+[2026-11-08] Keep full dev compiler eviction after the route audit exhausted its memory budget. Reuse reference caches and load only visible ledger metadata. Render the chart in batches of 100; search and selection still cover the full chart.
+
+
+[2026-11-08] Browser latency tests use an isolated Podman Supabase stack and deterministic ten-year synthetic SIE history. Production source snapshots exclude environment files. Measured cold requests have a 5 s cap, then navigation has 3 s and interactions 1 s, with no retries.
+[2026-11-10] Browser fixtures use Europe/Stockholm like the isolated server: mismatched UTC dates after Swedish midnight selected an empty historical reskontra while readiness expected live open invoices. Keep real clocks, row assertions and 5/3/1-second budgets.
+
+[2026-11-09] Move collapsible navigation and ledger presentation into a dedicated UI PR. Reports reuse the existing catalog, and inactive means zero closing balance with no vouchers in the selected interval.
+
+[2026-11-09] Responsive report tables keep one DOM and derive narrow-screen labels from their headers. Disclosure surfaces preserve native controls and selection. Per-tab, per-company view state and delayed scroll restoration retain context after voucher navigation.
+
+[2026-11-09] Mobile tables reuse one native table DOM with bordered, spaced row cards. Infer titles and selection columns from existing headers; place final actions in a full-width footer. Expanded details share their row outline.
+
+[2026-11-09] Reuse wrapping workflow steps and labelled responsive form rows for narrow screens; preserve native controls and desktop columns. Mobile audits check the document client width and nested scroll regions, while external docs redirects stay outside the self-hosted audit.
+
+[2026-11-09] Show calendar weeks as seven day cards on phones; the time matrix clipped days at narrow widths. Both views use the same dates and event arrays and preserve the existing day-navigation callback.

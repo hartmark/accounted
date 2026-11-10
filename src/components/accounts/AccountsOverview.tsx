@@ -1,5 +1,7 @@
 'use client'
 
+import { ResponsiveTable } from '@/components/ui/responsive-table'
+
 import Link from 'next/link'
 import useSWR from 'swr'
 import { useTranslations } from 'next-intl'
@@ -44,7 +46,7 @@ function Mark({ account }: { account: ReconciliationAccount }) {
  */
 export default function AccountsOverview() {
   const t = useTranslations('accounts_v2')
-  const { data, isLoading, error } = useSWR<ReconciliationAccount[]>('/api/reconciliation/accounts', fetchAccounts)
+  const { data, isLoading, error } = useSWR<ReconciliationAccount[]>('/api/reconciliation/accounts?include_manual=false', fetchAccounts)
   const { cashAccounts } = useCashAccounts({ enabledOnly: true })
   // Accounts with money in them: bank accounts and the skattekonto. Ledger
   // accounts reconciled by hand (2081, 2641 ...) belong to Avstämning.
@@ -75,7 +77,7 @@ export default function AccountsOverview() {
 
   return (
     <div className="stagger-enter">
-      <div className="-mx-5 overflow-x-auto px-5 md:-mx-6 md:px-6">
+      <ResponsiveTable>
         <table className="w-full border-collapse text-[13px]">
           <thead>
             <tr>
@@ -166,7 +168,7 @@ export default function AccountsOverview() {
             )}
           </tbody>
         </table>
-      </div>
+      </ResponsiveTable>
     </div>
   )
 }
