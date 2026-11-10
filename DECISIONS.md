@@ -1236,3 +1236,9 @@ Keep the current calendar month here. Archive completed months verbatim under `d
 
 [2026-11-08] Expose the existing no-document migration choice in the API wizard and send it per SIE job. Scope it to newly created vouchers so a no-change resync cannot reapply exemptions the user later removed.
 [2026-11-08] Remove historical receivable references before sandbox voucher teardown: their NO ACTION foreign keys otherwise block cleanup. Patch the current routine with an anchored new migration and retain its existing sandbox authorization checks.
+
+[2026-11-08] Keep full dev compiler eviction after the route audit exhausted its memory budget. Reuse reference caches and load only visible ledger metadata. Render the chart in batches of 100; search and selection still cover the full chart.
+
+
+[2026-11-08] Browser latency tests use an isolated Podman Supabase stack and deterministic ten-year synthetic SIE history. Production source snapshots exclude environment files. Measured cold requests have a 5 s cap, then navigation has 3 s and interactions 1 s, with no retries.
+[2026-11-10] Browser fixtures use Europe/Stockholm like the isolated server: mismatched UTC dates after Swedish midnight selected an empty historical reskontra while readiness expected live open invoices. Keep real clocks, row assertions and 5/3/1-second budgets.
