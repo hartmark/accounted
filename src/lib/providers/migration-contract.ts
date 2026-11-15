@@ -63,6 +63,8 @@ export interface ProviderMigrationStatus {
   changes?: {id:string;resource:MigrationResource;source_id:string;targetId:string;label:string;kind:'new'|'changed'}[]
   issues: { id: string; resource: MigrationResource; source_id: string; error_code: string;
     invoiceNumber?: string; invoiceDate?: string; amount?: number; currency?: string;
+    /** Supplier or customer name, the label when the source invoice has no number of its own. */
+    partyName?: string;
     targetId?: string | null; errorPhase?: string | null }[]
 }
 

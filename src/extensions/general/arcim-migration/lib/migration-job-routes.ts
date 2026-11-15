@@ -61,6 +61,23 @@ function logRefusal(ctx: ExtensionContext, rpcError: { code?: string; message: s
   })
 }
 
+/**
+ * The invoice number the source document carries, or undefined. Bokio fills a
+ * missing number with the document's own id (e.g. Skatteverket payables), and
+ * that UUID is no label a person can recognise.
+ */
+export function ownInvoiceNumber(invoice: { invoiceNumber?: unknown } | null | undefined, sourceId: string): string | undefined {
+  const value = typeof invoice?.invoiceNumber === 'string' ? invoice.invoiceNumber.trim() : ''
+  return value && value !== sourceId ? value : undefined
+}
+
+/** The supplier's name on a supplier invoice, the customer's on a sales invoice. */
+export function invoicePartyName(invoice: object | null | undefined, resource: string): string | undefined {
+  const party = (invoice as Record<string, unknown> | null | undefined)?.[resource === 'supplierInvoices' ? 'supplier' : 'customer'] as { name?: unknown } | undefined
+  const name = typeof party?.name === 'string' ? party.name.trim() : ''
+  return name || undefined
+}
+
 /** Extension dispatcher supplies MFA, company context and the write-role gate. */
 function requireContext(ctx?: ExtensionContext): ctx is ExtensionContext { return !!ctx?.companyId && !!ctx.userId }
 
@@ -86,9 +103,12 @@ export async function readMigrationStatus(ctx: ExtensionContext, jobId?: string)
       try { invoice = openMigrationPayload<Partial<SalesInvoiceDto>>(row.payload) } catch { /* Keep the source ID as fallback. */ }
     }
     const amount = invoice?.legalMonetaryTotal?.payableAmount?.value
+    const invoiceNumber = ownInvoiceNumber(invoice, row.source_id)
+    const partyName = invoicePartyName(invoice, row.resource)
     return { id: row.id, resource: row.resource, source_id: row.source_id, error_code: row.error_code,
       targetId: row.target_id ?? null, errorPhase: row.error_phase ?? null,
-      ...(typeof invoice?.invoiceNumber === 'string' && invoice.invoiceNumber ? { invoiceNumber: invoice.invoiceNumber } : {}),
+      ...(invoiceNumber ? { invoiceNumber } : {}),
+      ...(partyName ? { partyName } : {}),
       ...(typeof invoice?.issueDate === 'string' && invoice.issueDate ? { invoiceDate: invoice.issueDate } : {}),
       ...(typeof amount === 'number' && Number.isFinite(amount) ? { amount } : {}),
       ...(typeof invoice?.currencyCode === 'string' ? { currency: invoice.currencyCode } : {}) }
@@ -96,8 +116,8 @@ export async function readMigrationStatus(ctx: ExtensionContext, jobId?: string)
   const describedChanges = (Array.isArray(changes) ? changes : []).map(row => {
     let label = row.source_id as string
     if (row.payload) try {
-      const value = openMigrationPayload<{invoiceNumber?:string;party?:{name?:string}}>(row.payload)
-      label = value.invoiceNumber || value.party?.name || label
+      const value = openMigrationPayload<Partial<SalesInvoiceDto> & {party?:{name?:string}}>(row.payload)
+      label = ownInvoiceNumber(value, row.source_id) || invoicePartyName(value, row.resource) || value.party?.name || label
     } catch { /* A source ID remains a safe fallback. */ }
     return {id:row.id,resource:row.resource,source_id:row.source_id,targetId:row.target_id,label,
       kind:row.receipt?.reason==='source_changed' ? 'changed' as const : 'new' as const}

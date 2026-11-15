@@ -129,7 +129,7 @@ export default function ProviderMigrationProgress({ jobId, onResult, onReconnect
           <h3 className="font-medium">{t('ext_arcim_job_issues_title')}</h3>
           <ul className="space-y-4 text-sm">
             {status.issues.slice(0, 10).map(issue => <li key={issue.id} className="space-y-2 border-b border-border pb-4">
-              <p className="font-medium" data-ph-mask="">{t(`ext_arcim_job_resource_${issue.resource}`)}: {issue.invoiceNumber || issue.source_id}
+              <p className="font-medium" data-ph-mask="">{t(`ext_arcim_job_resource_${issue.resource}`)}: {[issue.partyName, issue.invoiceNumber].filter(Boolean).join(' ') || issue.source_id}
                 {issue.invoiceDate && ` · ${issue.invoiceDate}`}
                 {issue.amount !== undefined && ` · ${formatCurrency(issue.amount, issue.currency)}`}
               </p>
@@ -146,7 +146,10 @@ export default function ProviderMigrationProgress({ jobId, onResult, onReconnect
           </ul>
         </div> : null}
         {status?.job.error_code === 'PROVIDER_AUTH_EXPIRED' && <Button variant="outline" onClick={() => onReconnect(status)}>{t('ext_arcim_job_reconnect')}</Button>}
-        <Button variant="outline" onClick={retry} loading={retrying} disabled={role === 'viewer'}>{t('ext_arcim_job_retry')}</Button>
+        {/* Only a paused job continues. Once the review is accepted the job is
+            complete: what remains is review work, and retrying would run the
+            whole import again. */}
+        {needsAttention && <Button variant="outline" onClick={retry} loading={retrying} disabled={role === 'viewer'}>{t('ext_arcim_job_retry')}</Button>}
         {canFinish && <Button onClick={() => { setFinishError(false); setConfirmFinish(true) }} disabled={role === 'viewer'}>{t('ext_arcim_job_finish_review')}</Button>}
       </div>}
       <ConfirmationDialog open={confirmFinish} onOpenChange={open => { if (!finishing) setConfirmFinish(open) }}
