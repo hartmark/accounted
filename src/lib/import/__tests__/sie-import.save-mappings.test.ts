@@ -16,7 +16,7 @@
  * column: that blindness is exactly what let the bug survive four months.
  */
 import { describe, it, expect } from 'vitest'
-import { saveMappings } from '../sie-import'
+import { loadMappings, saveMappings } from '../sie-import'
 import type { AccountMapping } from '../types'
 import type { SupabaseClient } from '@supabase/supabase-js'
 
@@ -243,5 +243,29 @@ describe('saveMappings: where user_id comes from', () => {
       saveMappings(supabase, 'company-1', [makeMapping('1910', '1930')]),
     ).rejects.toThrow(/user_id saknas/i)
     expect(upserts).toHaveLength(0)
+  })
+})
+
+
+describe('loadMappings pagination', () => {
+  it('restores all 1246 saved accounts with stable company-scoped pages', async () => {
+    const rows = Array.from({ length: 1246 }, (_, i) => ({ source_account: String(1000 + i),
+      source_name: 'Saved account', target_account: String(1000 + i), confidence: 1, match_type: 'manual' }))
+    const scopes: unknown[] = []
+    const orders: unknown[] = []
+    const ranges: unknown[] = []
+    const query = { select: () => query,
+      eq: (...args: unknown[]) => { scopes.push(args); return query },
+      order: (...args: unknown[]) => { orders.push(args); return query },
+      range: async (from: number, to: number) => {
+        ranges.push([from, to]); return { data: rows.slice(from, to + 1), error: null }
+      } }
+    const db = { from: () => query } as unknown as SupabaseClient
+    const result = await loadMappings(db, 'company-1')
+    expect(result.size).toBe(1246)
+    expect(result.get('2245')).toMatchObject({ targetAccount: '2245', isOverride: true })
+    expect(ranges).toEqual([[0, 999], [1000, 1999]])
+    expect(scopes).toEqual([['company_id', 'company-1'], ['company_id', 'company-1']])
+    expect(orders).toEqual([['source_account'], ['source_account']])
   })
 })

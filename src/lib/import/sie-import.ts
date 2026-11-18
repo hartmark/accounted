@@ -18,6 +18,7 @@ import type {
   ImportPreview,
   FiscalYearPrecheck,
   SIEImport,
+  SIEAccountMappingRecord,
   MigrationDocumentation,
   SIETransactionLine,
   SIEObjectBalance,
@@ -2404,14 +2405,16 @@ export async function saveMappings(
  * Load existing account mappings for a user
  */
 export async function loadMappings(supabase: SupabaseClient, companyId: string): Promise<Map<string, AccountMapping>> {
-  const { data } = await supabase
+  const data = await fetchAllRows<SIEAccountMappingRecord>(({ from, to }) => supabase
     .from('sie_account_mappings')
     .select('*')
     .eq('company_id', companyId)
+    .order('source_account')
+    .range(from, to))
 
   const map = new Map<string, AccountMapping>()
 
-  for (const record of data || []) {
+  for (const record of data) {
     map.set(record.source_account, {
       sourceAccount: record.source_account,
       sourceName: record.source_name || '',

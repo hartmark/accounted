@@ -59,6 +59,7 @@ import { applySourceVatCodes } from '@/lib/import/account-vat-treatment'
 import { fortnoxVatCodeToTreatment } from '@/lib/providers/fortnox/vat-codes'
 import { loadMappings, generateImportPreview, findOverlappingPeriodImports } from '@/lib/import/sie-import'
 import { buildMappingTargets } from './lib/mapping-targets'
+import { rememberCompletedVatReviews } from './lib/remembered-vat-reviews'
 import type { ProviderName } from '@/lib/providers/types'
 import { FORTNOX_DOCUMENT_SCOPES_APPROVED } from '@/lib/providers/fortnox/oauth'
 import {
@@ -1341,6 +1342,8 @@ export const arcimMigrationExtension: Extension = {
           } catch (err) {
             log.warn(`Account mapping: ${provider} chart fetch failed, VAT codes fall back to label suggestions`, err as Error)
           }
+
+          mappings = await rememberCompletedVatReviews(supabase, companyId, mappings)
 
           const mappingStats = getMappingStats(mappings)
 
