@@ -104,7 +104,7 @@ export async function readMigrationStatus(ctx: ExtensionContext, jobId?: string)
     .neq('receipt->>reason','unchanged').order('id').range(from,to)) : []
   const comparisons = new Map<string, { differences?: import('@/lib/providers/migration-contract').MigrationFieldDifference[]; comparisonUnavailable?: boolean }>()
   const changedRows = new Map([...(Array.isArray(changes) ? changes : []), ...(Array.isArray(issues) ? issues : [])]
-    .filter(row => row.receipt?.reason === 'source_changed' || row.error_code === 'MIGRATION_SOURCE_CHANGED')
+    .filter(row => ('receipt' in row && row.receipt?.reason === 'source_changed') || ('error_code' in row && row.error_code === 'MIGRATION_SOURCE_CHANGED'))
     .map(row => [row.id,row]))
   for (const row of changedRows.values()) {
     try {
