@@ -9681,7 +9681,7 @@
     "ext_arcim_job_connection": "Statusen kan inte hämtas just nu. Importens sparade framsteg finns kvar. Vi försöker igen.",
     "ext_arcim_job_attention_detail": "Listan nedan visar alla kvarvarande importproblem. Vissa fakturor är redan importerade men behöver granskas för kopplingen till rätt verifikat. Sparade poster finns kvar.",
     "ext_arcim_job_retry": "Fortsätt importen",
-    "ext_arcim_job_counts": "{imported} av {total} importerade, {skipped, plural, one {# undantagen} other {# undantagna}}, {pending} kvar, {failed} behöver ses över",
+    "ext_arcim_job_counts": "{imported} nya, {unchanged} oförändrade, {skipped, plural, one {# undantagen} other {# undantagna}}, {pending} kvar, {failed} att granska",
     "ext_arcim_job_counts_skipped": "{skipped} hoppades över",
     "ext_arcim_job_skipped_explanation": "Överhoppade poster importerades inte. Vanliga skäl är inaktiva kunder och leverantörer, och fakturor som hör till räkenskapsår som inte importerats.",
     "ext_arcim_job_phase_discover": "Hämtar och sparar källregistret",

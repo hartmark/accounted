@@ -95,8 +95,8 @@ export default function ProviderMigrationProgress({ jobId, onResult, onReconnect
             <div className="flex flex-wrap justify-between gap-2">
             <span>{t(`ext_arcim_job_resource_${row.resource}`)}</span>
             <span className="tabular-nums text-muted-foreground">{t('ext_arcim_job_counts', {
-              imported: row.imported, total: row.total, pending: row.pending, failed: row.needs_attention,
-            })}{row.skipped > 0 && `, ${t('ext_arcim_job_counts_skipped', { skipped: row.skipped })}`}</span>
+              imported: row.imported, total: row.total, unchanged:row.unchanged ?? 0, skipped:row.skipped, pending: row.pending, failed: row.needs_attention,
+            })}</span>
             </div>
             <MigrationSkippedRecords status={status} resource={row.resource} />
           </li>)}

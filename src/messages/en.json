@@ -9681,7 +9681,7 @@
     "ext_arcim_job_connection": "Status is temporarily unavailable. Saved import progress is preserved. Retrying.",
     "ext_arcim_job_attention_detail": "The list below shows all remaining import issues. Some invoices are already imported but need their voucher links reviewed. Saved records are preserved.",
     "ext_arcim_job_retry": "Resume import",
-    "ext_arcim_job_counts": "{imported} of {total} imported, {skipped} excluded, {pending} pending, {failed} need attention",
+    "ext_arcim_job_counts": "{imported} new, {unchanged} unchanged, {skipped} excluded, {pending} pending, {failed} to review",
     "ext_arcim_job_counts_skipped": "{skipped} skipped",
     "ext_arcim_job_skipped_explanation": "Skipped records were not imported. Common reasons are inactive customers and suppliers, and invoices that belong to fiscal years that were not imported.",
     "ext_arcim_job_phase_discover": "Fetching and saving source records",
