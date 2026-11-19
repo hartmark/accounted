@@ -1,5 +1,7 @@
 'use client'
 
+import { ResponsiveTable } from '@/components/ui/responsive-table'
+
 import { useMemo, useState } from 'react'
 import { useTranslations } from 'next-intl'
 import { MagnifyingGlassIcon, XMarkIcon } from '@/components/icons'
@@ -108,7 +110,8 @@ export function ReportLibrary({
           </button>
         </p>
       ) : (
-        <div className="-mx-2 overflow-x-auto" role="region" aria-label={t('title')}>
+        <ResponsiveTable role="region" aria-label={t('title')}>
+
           <table className="w-full border-collapse text-[13px]">
             <thead>
               <tr>
@@ -132,7 +135,7 @@ export function ReportLibrary({
               ))}
             </tbody>
           </table>
-        </div>
+        </ResponsiveTable>
       )}
     </div>
   )

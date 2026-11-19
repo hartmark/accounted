@@ -1,6 +1,8 @@
 'use client'
 
 import { useState, useMemo } from 'react'
+import { ResponsiveTable } from '@/components/ui/responsive-table'
+
 import dynamic from 'next/dynamic'
 import { useRouter } from 'next/navigation'
 import { useTranslations, useLocale } from 'next-intl'
@@ -215,7 +217,8 @@ export default function SuppliersPage() {
         )
       ) : (
         <>
-          <div className="-mx-2 overflow-x-auto">
+          <ResponsiveTable>
+
             <table className="w-full border-collapse text-[13px]">
               <thead>
                 <tr>
@@ -266,7 +269,7 @@ export default function SuppliersPage() {
                 })}
               </tbody>
             </table>
-          </div>
+          </ResponsiveTable>
 
           {/* Footer note (concept pgnote) */}
           <p className="px-1 text-xs text-muted-foreground tabular-nums">

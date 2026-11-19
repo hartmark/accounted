@@ -1,5 +1,7 @@
 'use client'
 
+import { expandableSurface } from '@/components/ui/expandable-surface'
+
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useLocale, useTranslations } from 'next-intl'
 import { Button } from '@/components/ui/button'
@@ -374,7 +376,7 @@ export default function JournalEntryAttachments({
             const previewable = kind === 'pdf' || kind === 'image'
             const isExpanded = expandedDoc === doc.id
             return (
-              <div key={doc.id}>
+              <div key={doc.id} {...(previewable ? expandableSurface(() => handlePreviewToggle(doc)) : {})}>
                 <div className="flex items-center gap-2 text-sm py-1.5 px-2 rounded-sm bg-muted/50">
                   {previewable ? (
                     // The chevron, the icon and the file name are one toggle:
@@ -382,6 +384,8 @@ export default function JournalEntryAttachments({
                     // on /bookkeeping.
                     <button
                       type="button"
+                      aria-label={t(expandedDoc === doc.id ? 'hide_preview' : 'show_preview')}
+
                       onClick={() => handlePreviewToggle(doc)}
                       aria-expanded={isExpanded}
                       className="flex min-w-0 flex-1 items-center gap-2 text-left hover:text-primary transition-colors"

@@ -1,5 +1,7 @@
 'use client'
 
+import { ResponsiveTable } from '@/components/ui/responsive-table'
+
 import { useEffect, useMemo, useState } from 'react'
 import { useTranslations } from 'next-intl'
 import { ClockIcon } from '@/components/icons'
@@ -142,8 +144,9 @@ export function BehandlingshistorikView({
       </p>
 
       <Card>
-        <CardContent>
-          <div className="overflow-x-auto">
+        <CardContent className="p-0">
+          <ResponsiveTable >
+
             <table className="w-full text-sm min-w-[760px]">
               <thead className="[&_th]:font-medium [&_th]:text-xs [&_th]:tracking-wider [&_th]:text-muted-foreground">
                 <tr className="border-b text-left">
@@ -186,7 +189,7 @@ export function BehandlingshistorikView({
                 ))}
               </tbody>
             </table>
-          </div>
+          </ResponsiveTable>
         </CardContent>
       </Card>
     </div>

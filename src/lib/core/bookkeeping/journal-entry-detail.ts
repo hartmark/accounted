@@ -1,4 +1,5 @@
 import { createServiceClient } from '@/lib/supabase/server'
+import { filedVatPeriodsOfDates } from '@/lib/vat/filed-period-for-date'
 import { voucherOwnerOrNull } from './voucher-owner'
 import { getJournalEntryChain } from './journal-entry-chain'
 import { getJournalEntryUnderlagReferences } from './journal-entry-references'
@@ -15,7 +16,7 @@ export async function getJournalEntryDetail(ctx: OperationContext, id: string): 
 
   // Optional history can fail independently. Unknown period status keeps
   // inline corrections gated until the server can confirm an open period.
-  const [references, retag, rattelse, period, owner] = await Promise.all([
+  const [references, retag, rattelse, period, owner, filedVat] = await Promise.all([
     getJournalEntryUnderlagReferences(supabase, companyId, id).catch(() => null),
     supabase.from('dimension_retag_log')
       .select('id, line_id, old_dimensions, new_dimensions, actor, reason, created_at')
@@ -26,6 +27,7 @@ export async function getJournalEntryDetail(ctx: OperationContext, id: string): 
     ).catch(() => null),
     resolvePeriodStatusForDate(supabase, companyId, chain.entry.entry_date).catch(() => null),
     voucherOwnerOrNull(supabase, companyId, {id}),
+    filedVatPeriodsOfDates(supabase,companyId,[chain.entry.entry_date]).then(rows=>rows.get(chain.entry.entry_date) ?? null).catch(()=>null),
   ])
   if (!references || retag.error || !rattelse?.ok || !period) {
     log.warn('Optional journal detail metadata unavailable', {
@@ -35,7 +37,7 @@ export async function getJournalEntryDetail(ctx: OperationContext, id: string): 
   }
   return {
     ...chain,
-    owned_by:owner, period,
+    owned_by:owner, period:period ? {...period,filed_vat:filedVat} : null,
     references,
     retag_log: retag.error ? [] : retag.data ?? [],
     rattelse_log: rattelse?.ok && !rattelse.dryRun ? rattelse.data as JournalEntryDetailRead['rattelse_log'] : [],

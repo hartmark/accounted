@@ -210,7 +210,10 @@
     "v3_overview": "Overview",
     "v3_meetings": "Meetings",
     "v3_capital": "Capital",
-    "v3_owner_tax": "Owner tax"
+    "v3_owner_tax": "Owner tax",
+    "expand_section": "Expand {name}",
+    "collapse_section": "Collapse {name}",
+    "reports_overview": "All reports"
   },
   "discord_invite": {
     "title": "Join our Discord",
@@ -8911,7 +8914,9 @@
     "picker_copy_attach": "Attach a copy",
     "picker_copy_linked": "A copy of the document is attached.",
     "download_failed": "Could not open the document",
-    "load_failed": "Could not load the documents"
+    "load_failed": "Could not load the documents",
+    "show_preview": "Show preview",
+    "hide_preview": "Hide preview"
   },
   "journal_status": {
     "status_draft": "Draft",
@@ -12381,7 +12386,18 @@
     "vat_lock_books_body": "The VAT return for {period} is filed.",
     "vat_lock_books_open_year": "The fiscal year ending {date} is not closed: its year-end closing cannot be booked until the lock date is moved back.",
     "vat_lock_books_consequence": "Vouchers dated on or before {date} can then no longer be created or changed. The date is moved back under Settings > Bookkeeping.",
-    "vat_lock_books_confirm": "Lock the bookkeeping"
+    "vat_lock_books_confirm": "Lock the bookkeeping",
+    "ledger_empty_title": "No vouchers in the period",
+    "ledger_empty_description": "There are no posted vouchers in the selected period.",
+    "ledger_period_summary": "Period {start} to {end} · {count, plural, one {# account} other {# accounts}}",
+    "ledger_hide_inactive_help": "An account is inactive when its closing balance is zero and it has no vouchers within the selected reporting interval of the fiscal year.",
+    "ledger_hide_inactive": "Hide inactive",
+    "ledger_no_active_accounts": "No active accounts in the interval",
+    "ledger_show_inactive_hint": "Clear Hide inactive to show accounts with a zero balance and no vouchers in the interval.",
+    "ledger_expand_all": "Expand all",
+    "ledger_collapse_all": "Collapse all",
+    "ledger_expand_account": "Expand account {number}",
+    "ledger_collapse_account": "Collapse account {number}"
   },
   "contract_revenue": {
     "title": "Work in progress",

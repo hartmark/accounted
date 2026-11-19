@@ -36,7 +36,7 @@ type PeriodStatus = 'open' | 'locked' | 'closed'
 export type JournalEntryDetailRead = {
   delete_block?: import('@/lib/core/bookkeeping/voucher-delete-guard').SieDeleteBlock | null
   owned_by?: import('@/lib/core/bookkeeping/voucher-owner').VoucherOwner | null
-  period?: Awaited<ReturnType<typeof import('@/lib/core/bookkeeping/period-service').resolvePeriodStatusForDate>> | null
+  period?: Awaited<ReturnType<typeof import('@/lib/core/bookkeeping/period-service').resolvePeriodStatusForDate>> & {filed_vat:import('@/lib/vat/filed-period-for-date').FiledVatPeriod | null} | null
   entry: JournalEntry
   chain: JournalEntry[]
   is_last_in_series: boolean

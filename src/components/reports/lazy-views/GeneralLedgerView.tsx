@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
+import { usePageState } from '@/lib/hooks/use-page-state'
 import Link from 'next/link'
 import { useTranslations } from 'next-intl'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -109,8 +110,9 @@ function nextLedgerRowSort(current: LedgerRowSort, column: LedgerRowSortColumn):
 const EMPTY_DATE_RANGE: DateRangeValue = {}
 
 export default function GeneralLedgerView({ periodId, initialAccountFilter, dimensionFilter = null, dateRange = EMPTY_DATE_RANGE }: { periodId: string; initialAccountFilter: string | null; dimensionFilter?: DimensionFilterValue | null; dateRange?: DateRangeValue }) {
-  const [accountFrom, setAccountFrom] = useState(initialAccountFilter ?? '')
-  const [accountTo, setAccountTo] = useState(initialAccountFilter ?? '')
+  const [hideInactive,setHideInactive] = usePageState('ledger-hide-inactive',true)
+  const [accountFrom, setAccountFrom] = usePageState(`ledger-from:${periodId}`,initialAccountFilter ?? '')
+  const [accountTo, setAccountTo] = usePageState(`ledger-to:${periodId}`,initialAccountFilter ?? '')
   // The account range the ledger is fetched for: what Filtrera applied. A new
   // period, window, dimension or drill-down applies the drill-down's account
   // when there is one (into the fields too), else what the fields hold.
@@ -132,6 +134,7 @@ export default function GeneralLedgerView({ periodId, initialAccountFilter, dime
   // right after mount (the date-range control resolves its preset, or a
   // drill-down's window), and the superseded answer is dropped.
   const params = new URLSearchParams({ period_id: periodId })
+  if (!hideInactive) params.set('include_inactive','true')
   if (applied.from) params.set('account_from', applied.from)
   if (applied.to) params.set('account_to', applied.to)
   if (dateRange.fromDate) params.set('from_date', dateRange.fromDate)
@@ -164,10 +167,10 @@ export default function GeneralLedgerView({ periodId, initialAccountFilter, dime
 
   if (!data || data.accounts.length === 0) {
     return (
-      <ReportEmptyState
+      <div><Button variant="outline" onClick={()=>setHideInactive(!hideInactive)}>{hideInactive ? "Visa inaktiva konton" : "Dölj inaktiva konton"}</Button><ReportEmptyState
         title="Inga verifikationer i perioden"
         description="Det finns inga bokförda verifikationer i den valda perioden."
-      />
+      /></div>
     )
   }
 
@@ -204,6 +207,7 @@ export default function GeneralLedgerView({ periodId, initialAccountFilter, dime
         <Button onClick={applyAccountRange} variant="outline">
           Filtrera
         </Button>
+        <Button variant="outline" aria-pressed={!hideInactive} onClick={()=>setHideInactive(!hideInactive)}>{hideInactive ? "Visa inaktiva konton" : "Dölj inaktiva konton"}</Button>
       </div>
 
       {data.period.start && (
@@ -231,7 +235,7 @@ export default function GeneralLedgerView({ periodId, initialAccountFilter, dime
 
 function LedgerAccountCard({ account, linesQuery, defaultOpen }: { account: GeneralLedgerAccount; linesQuery: string; defaultOpen: boolean }) {
   const t = useTranslations('general_ledger')
-  const [open, setOpen] = useState(defaultOpen)
+  const [open, setOpen] = usePageState(`ledger-open:${linesQuery}:${account.account_number}`,defaultOpen)
   const [sort, setSort] = useState<LedgerRowSort>(LEDGER_ROW_ORDER)
   // The search box sits behind a magnifier, so a ledger of many accounts is
   // not a column of search boxes. The account the view is about (a

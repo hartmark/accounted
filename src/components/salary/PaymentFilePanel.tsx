@@ -1,5 +1,7 @@
 'use client'
 
+import { expandableSurface } from '@/components/ui/expandable-surface'
+
 import Link from 'next/link'
 import { useState, type ReactNode } from 'react'
 import { useLocale, useTranslations } from 'next-intl'
@@ -328,6 +330,7 @@ export function PaymentFilePanel({
 
           {/* The one action row: the bank instructions are an appendix that
               folds out under it, so the button stays where the section ends. */}
+          <div className="space-y-3 cursor-pointer" {...expandableSurface(() => setInstructionsChoice(!showInstructions))}>
           <div className="flex flex-wrap items-center justify-between gap-3">
             <button
               type="button"
@@ -390,6 +393,7 @@ export function PaymentFilePanel({
               <p className="pt-2 text-muted-foreground">{t('instructions_footer')}</p>
             </div>
           )}
+          </div>
         </div>
       )}
     </>

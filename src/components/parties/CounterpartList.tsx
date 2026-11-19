@@ -1,5 +1,7 @@
 'use client'
 
+import { ResponsiveTable } from '@/components/ui/responsive-table'
+
 import { Fragment } from 'react'
 import { useTranslations } from 'next-intl'
 import { EllipsisHorizontalIcon } from '@/components/icons'
@@ -62,7 +64,8 @@ export function CounterpartList({
   const mixed = confirmedCount > 0 && confirmedCount < rows.length
 
   return (
-    <div className="-mx-2 overflow-x-auto">
+    <ResponsiveTable>
+
       <table className="w-full border-collapse text-[13px]">
         <thead>
           <tr>
@@ -178,6 +181,6 @@ export function CounterpartList({
           })}
         </tbody>
       </table>
-    </div>
+    </ResponsiveTable>
   )
 }

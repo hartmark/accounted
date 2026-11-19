@@ -134,14 +134,14 @@ export function EditorTopBar({
           {meta}
         </p>
       )}
-      {/* On a phone the pane switch folds into "more" beside a long primary
-          ("Markera som skickad och bokför"), so the bar stays one row. */}
-      <PageHeaderActions className="ml-auto flex flex-wrap items-center justify-end gap-2">
+      <PageHeaderActions className="ml-auto flex min-w-0 max-w-full flex-wrap items-center justify-end gap-2">
+
         {paneSwitch}
-        <div className="inline-flex items-stretch">
+        <div className="inline-flex min-h-8 min-w-0 max-w-full items-stretch">
           <Button
             size="toolbar"
-            className={menu ? 'rounded-r-none' : undefined}
+            className={menu ? 'h-auto min-w-0 whitespace-normal rounded-r-none' : 'h-auto min-w-0 whitespace-normal'}
+
             onClick={primary.onClick}
             onKeyDown={handlePrimaryKeyDown}
             disabled={primary.disabled}

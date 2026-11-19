@@ -1,5 +1,7 @@
 'use client'
 
+import { expandableSurface } from '@/components/ui/expandable-surface'
+
 import { useEffect, useMemo, useState } from 'react'
 import dynamic from 'next/dynamic'
 import { useLocale } from 'next-intl'
@@ -253,7 +255,8 @@ export function AgentSkillsPanel() {
                 const body = bodies[atom.id]
                 const dormant = !atom.active
                 return (
-                  <div key={atom.id} className="border-b-hairline">
+                  <div key={atom.id} className="border-b border-border cursor-pointer" {...expandableSurface(() => toggle(atom))}>
+
                     <button
                       type="button"
                       onClick={() => toggle(atom)}

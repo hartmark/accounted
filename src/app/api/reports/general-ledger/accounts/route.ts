@@ -5,12 +5,8 @@ import { errorResponseFromCode } from '@/lib/errors/get-structured-error'
 import { parseDimensionFilterParams } from '@/lib/reports/dimension-filter'
 import { parseReportDateRange, type DateRange } from '@/lib/reports/date-range'
 
-/**
- * The huvudbok view's accounts: per account the opening balance, the
- * window's debit and credit, the closing balance and the line count, with
- * every line when the ledger is small (lines_included). A larger ledger
- * reads each account's lines from ../lines, a page at a time.
- */
+/** Read the fiscal-period ledger, optionally retaining inactive accounts for display filtering. */
+
 export const GET = withRouteContext(
   'report.general_ledger.accounts',
   async (request, ctx) => {
@@ -52,6 +48,7 @@ export const GET = withRouteContext(
         dimensions: dimFilter.dimensions,
         fromDate: range.fromDate,
         toDate: range.toDate,
+        ...(searchParams.get('include_inactive') === 'true' ? { includeInactive: true } : {}),
       })
       return NextResponse.json({ data })
     } catch (err) {

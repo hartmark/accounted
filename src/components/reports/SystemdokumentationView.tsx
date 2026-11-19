@@ -1,5 +1,7 @@
 'use client'
 
+import { ResponsiveTable } from '@/components/ui/responsive-table'
+
 import { useEffect, useState } from 'react'
 import { useTranslations } from 'next-intl'
 import { Card, CardContent } from '@/components/ui/card'
@@ -93,8 +95,9 @@ export function SystemdokumentationView({ periodId }: SystemdokumentationViewPro
       </div>
 
       <Card>
-        <CardContent>
-          <table className="-mx-2 w-[calc(100%+1rem)] text-[13px]">
+        <CardContent className="p-0">
+          <ResponsiveTable><table className="w-full text-[13px]">
+
             <thead>
               <tr>
                 <th className={cn(TH_CLASS, 'w-[220px]')}>{t('col_section')}</th>
@@ -111,7 +114,7 @@ export function SystemdokumentationView({ periodId }: SystemdokumentationViewPro
                 </tr>
               ))}
             </tbody>
-          </table>
+          </table></ResponsiveTable>
         </CardContent>
       </Card>
 

@@ -178,6 +178,30 @@ export default function ChartOfAccountsManager() {
   // Data fetching
   // -------------------------------------------
 
+  const fetchReference = useCallback(async () => {
+    const res = await fetch('/api/bookkeeping/accounts/reference')
+    const { data } = await res.json()
+    const userMap = new Map<string, { account_number: string; is_active: boolean; is_system_account: boolean }>(
+      (data || []).map(
+        (a: { account_number: string; is_active: boolean; is_system_account: boolean }) => [a.account_number, a],
+      ),
+    )
+    // The full chart is a lazily loaded chunk: only the BAS-katalog tab pays
+    // for it, not every route that renders this component's parent.
+    const BAS_REFERENCE = await ensureBasLoaded()
+    const merged: ReferenceAccount[] = BAS_REFERENCE.map((ref) => {
+      const userAccount = userMap.get(ref.account_number)
+      return {
+        ...ref,
+        is_activated: !!userAccount,
+        is_active: userAccount?.is_active ?? false,
+        is_system_account: userAccount?.is_system_account ?? false,
+      }
+    })
+    setReferenceAccounts(merged)
+  }, [])
+
+
   const fetchUsage = useCallback(async () => {
     try {
       const res = await fetch('/api/bookkeeping/accounts/usage')

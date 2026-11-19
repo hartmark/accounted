@@ -1,5 +1,7 @@
 'use client'
 
+import { ResponsiveTable } from '@/components/ui/responsive-table'
+
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useLocale, useTranslations } from 'next-intl'
@@ -560,8 +562,12 @@ export function CreditNoteEditor({ invoiceId }: { invoiceId: string }) {
               </p>
             </EditorSection>
 
-            <EditorSection label={t('rows_title')}>
-              <table className="w-full border-collapse text-[13px]">
+            <EditorSection
+              label={t('rows_title')}
+              aside={t('rows_from', { count: productCount, number: originalNumber ?? '' })}
+            >
+              <ResponsiveTable><table className="w-full border-collapse text-[13px]">
+
                 <thead>
                   <tr className="border-b-hairline text-xs text-muted-foreground">
                     <th className="px-2 pb-2 text-left font-normal">{t('th_description')}</th>
@@ -601,7 +607,11 @@ export function CreditNoteEditor({ invoiceId }: { invoiceId: string }) {
                     ),
                   )}
                 </tbody>
-              </table>
+              </table></ResponsiveTable>
+              <p className="mt-3 text-[12.5px] text-muted-foreground">
+                {t('rows_note', { number: originalNumber ?? '' })}
+              </p>
+
 
               <dl className="ml-auto mt-6 grid w-full max-w-xs grid-cols-[minmax(0,1fr)_auto] gap-x-6 gap-y-1 text-[13px] tabular-nums">
                 <dt className="text-muted-foreground">{t('subtotal')}</dt>

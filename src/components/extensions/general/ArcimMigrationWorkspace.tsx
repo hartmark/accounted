@@ -1008,6 +1008,15 @@ export function ProviderStep({
                       instead of squeezing the date into a column; the
                       disconnect icon then sits beside the name (order-1). */}
                   <div className="order-2 flex w-full shrink-0 flex-wrap items-center gap-2 sm:order-none sm:w-auto sm:flex-nowrap">
+                    <Button
+                      variant="outline"
+                      size="toolbar"
+                      onClick={() => onResync(consent.provider, consent.id)}
+                    >
+                      <ArrowPathIcon className="mr-1.5 h-3.5 w-3.5" />
+                      Synka igen
+                    </Button>
+
                     {/* The underlag offer used to live only in the result step
                         of the run that just finished; closing or reloading
                         lost it. From here it runs on its own, with the same

@@ -210,7 +210,10 @@
     "v3_overview": "Översikt",
     "v3_meetings": "Möten",
     "v3_capital": "Kapital",
-    "v3_owner_tax": "Ägarskatt"
+    "v3_owner_tax": "Ägarskatt",
+    "expand_section": "Expandera {name}",
+    "collapse_section": "Fäll ihop {name}",
+    "reports_overview": "Alla rapporter"
   },
   "discord_invite": {
     "title": "Gå med i vår Discord",
@@ -8911,7 +8914,9 @@
     "picker_copy_attach": "Koppla kopia",
     "picker_copy_linked": "En kopia av underlaget är kopplad.",
     "download_failed": "Kunde inte öppna dokumentet",
-    "load_failed": "Kunde inte hämta underlagen"
+    "load_failed": "Kunde inte hämta underlagen",
+    "show_preview": "Visa förhandsgranskning",
+    "hide_preview": "Dölj förhandsgranskning"
   },
   "journal_status": {
     "status_draft": "Utkast",
@@ -12381,7 +12386,18 @@
     "vat_lock_books_body": "Momsdeklarationen för {period} är inlämnad.",
     "vat_lock_books_open_year": "Räkenskapsåret som slutar {date} är inte stängt: bokslutet kan inte bokföras förrän låsdatumet flyttats tillbaka.",
     "vat_lock_books_consequence": "Verifikationer daterade t.o.m. {date} kan sedan inte skapas eller ändras. Datumet flyttas tillbaka under Inställningar > Bokföring.",
-    "vat_lock_books_confirm": "Lås bokföringen"
+    "vat_lock_books_confirm": "Lås bokföringen",
+    "ledger_empty_title": "Inga verifikationer i perioden",
+    "ledger_empty_description": "Det finns inga bokförda verifikationer i den valda perioden.",
+    "ledger_period_summary": "Period {start} till {end} · {count, plural, one {# konto} other {# konton}}",
+    "ledger_hide_inactive_help": "Kontot räknas som inaktivt när dess utgående saldo är 0 kr och det saknar verifikat inom det valda rapportintervallet för räkenskapsåret.",
+    "ledger_hide_inactive": "Dölj inaktiva",
+    "ledger_no_active_accounts": "Inga aktiva konton i intervallet",
+    "ledger_show_inactive_hint": "Avmarkera Dölj inaktiva för att visa konton som har nollsaldo och saknar verifikat i intervallet.",
+    "ledger_expand_all": "Expandera alla",
+    "ledger_collapse_all": "Kollapsa alla",
+    "ledger_expand_account": "Expandera konto {number}",
+    "ledger_collapse_account": "Kollapsa konto {number}"
   },
   "contract_revenue": {
     "title": "Pågående arbeten",

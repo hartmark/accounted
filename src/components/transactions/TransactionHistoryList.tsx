@@ -1,5 +1,9 @@
 'use client'
 
+import { ResponsiveTable } from '@/components/ui/responsive-table'
+
+import { useState } from 'react'
+
 import { useTranslations } from 'next-intl'
 import Link from 'next/link'
 import { Badge } from '@/components/ui/badge'
@@ -203,7 +207,8 @@ export default function TransactionHistoryList({
       ) : (
         /* Negative margin + matching padding: keeps the columns flush with
            the page edges (mirrors the inbox table on the transactions page). */
-        <div className="-mx-4 overflow-x-auto px-2 md:-mx-6 md:px-4">
+        <ResponsiveTable actionsColumn="last">
+
           <table className="w-full border-collapse text-[13px]">
             <thead>
               <tr>
@@ -242,7 +247,7 @@ export default function TransactionHistoryList({
               )}
             </tbody>
           </table>
-        </div>
+        </ResponsiveTable>
       )}
 
       {/* Pagination pages BANK rows: keep it reachable whenever more exist,

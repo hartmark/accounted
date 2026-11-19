@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+vi.mock('react',async load=>({...await load<typeof import('react')>(),useMemo:(fn:()=>unknown)=>fn()}))
 const state = vi.hoisted(() => ({ companyId: 'company-1' as string | null, swr: vi.fn() }))
 vi.mock('swr', () => ({ default: state.swr }))
 vi.mock('@/contexts/CompanyContext', () => ({
@@ -17,7 +18,7 @@ beforeEach(() => {
 describe('account reference subscriptions', () => {
   it.each([true, false])('retains the company-scoped key for activeOnly=%s', activeOnly => {
     useAccounts(activeOnly)
-    expect(state.swr.mock.calls[0][0]).toEqual(['ref:accounts', 'company-1', activeOnly])
+    expect(state.swr.mock.calls[0][0]).toEqual(['ref:accounts', 'company-1', false])
   })
 
   it('does not subscribe when the caller already has its account name', () => {

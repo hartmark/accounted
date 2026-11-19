@@ -1,5 +1,7 @@
 'use client'
 
+import { ResponsiveTable } from '@/components/ui/responsive-table'
+
 import { Fragment, useMemo, useState, useEffect, useRef } from 'react'
 import dynamic from 'next/dynamic'
 import { useRouter, useSearchParams } from 'next/navigation'
@@ -750,7 +752,8 @@ export default function SupplierInvoicesPage() {
            trailing column is one slot for the row's next step: Godkänn while
            attest is pending, the I banken bock (#2220) once attested; it is
            sized for the bock plus its label, the wider of the two. */
-        <div className="-mx-2 overflow-x-auto">
+        <ResponsiveTable>
+
           <table className="w-full border-collapse text-[13px]">
             <thead>
               <tr>
@@ -998,7 +1001,7 @@ export default function SupplierInvoicesPage() {
               })}
             </tbody>
           </table>
-        </div>
+        </ResponsiveTable>
       )}
 
       {!isLoading && (

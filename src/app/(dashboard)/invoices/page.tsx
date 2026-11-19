@@ -1,6 +1,8 @@
 'use client'
 
 import { isCreditNoteDocument } from '@/lib/bookkeeping/credit-note-state'
+import { ResponsiveTable } from '@/components/ui/responsive-table'
+
 import { Fragment, useState, useEffect, useMemo, useRef } from 'react'
 import { useCompanySettings } from '@/lib/reference-data/hooks'
 import { groupRows, ungrouped } from '@/lib/lists/group-rows'
@@ -1324,7 +1326,8 @@ export default function InvoicesPage() {
           />
         )
       ) : (
-        <div className="-mx-2 overflow-x-auto">
+        <ResponsiveTable>
+
           <table className="w-full border-collapse text-[13px]">
             <thead>
               <tr>
@@ -1503,7 +1506,7 @@ export default function InvoicesPage() {
               })}
             </tbody>
           </table>
-        </div>
+        </ResponsiveTable>
       )}
 
       {!isLoading && (

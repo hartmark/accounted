@@ -1,5 +1,7 @@
 'use client'
 
+import { ResponsiveTable } from '@/components/ui/responsive-table'
+
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useLocale, useTranslations } from 'next-intl'
@@ -98,8 +100,9 @@ export function BokslutsbilagorView({ periodId }: BokslutsbilagorViewProps) {
       </div>
 
       <Card>
-        <CardContent>
-          <div className="-mx-2 overflow-x-auto">
+        <CardContent className="p-0">
+          <ResponsiveTable >
+
             <table className="w-full min-w-[820px] text-[13px]">
               <thead>
                 <tr>
@@ -157,7 +160,7 @@ export function BokslutsbilagorView({ periodId }: BokslutsbilagorViewProps) {
                 })}
               </tbody>
             </table>
-          </div>
+          </ResponsiveTable>
         </CardContent>
       </Card>
     </div>

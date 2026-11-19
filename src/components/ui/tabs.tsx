@@ -13,8 +13,8 @@ const TabsList = React.forwardRef<
   <TabsPrimitive.List
     ref={ref}
     className={cn(
-      // Stil v3: the same wash track and raised thumb as SegmentedControl.
-      "inline-flex h-8 items-center justify-center gap-0.5 rounded-lg bg-secondary/80 p-0.5 text-muted-foreground max-w-full overflow-x-auto scrollbar-hide",
+      "inline-flex h-auto min-h-10 max-w-full flex-wrap items-center justify-center rounded-full bg-muted p-1 text-muted-foreground sm:h-10 sm:flex-nowrap",
+
       className
     )}
     {...props}
@@ -31,7 +31,8 @@ const TabsTrigger = React.forwardRef<
     ref={ref}
     data-ph-unmask=""
     className={cn(
-      "inline-flex h-full items-center justify-center gap-1.5 whitespace-nowrap rounded-md px-3 text-[13px] font-medium ring-offset-background transition-[background-color,box-shadow,color] duration-150 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70 focus-visible:ring-offset-1 disabled:pointer-events-none disabled:opacity-40 data-[state=active]:bg-control data-[state=active]:text-strong data-[state=active]:shadow-raised",
+      "inline-flex min-w-0 max-w-full items-center justify-center whitespace-normal rounded-full px-3 py-1.5 text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-[var(--shadow-sm)]",
+
       className
     )}
     {...props}
