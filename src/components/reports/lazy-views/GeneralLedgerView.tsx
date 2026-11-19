@@ -111,12 +111,19 @@ const EMPTY_DATE_RANGE: DateRangeValue = {}
 
 export default function GeneralLedgerView({ periodId, initialAccountFilter, dimensionFilter = null, dateRange = EMPTY_DATE_RANGE }: { periodId: string; initialAccountFilter: string | null; dimensionFilter?: DimensionFilterValue | null; dateRange?: DateRangeValue }) {
   const [hideInactive,setHideInactive] = usePageState('ledger-hide-inactive',true)
-  const [accountFrom, setAccountFrom] = usePageState(`ledger-from:${periodId}`,initialAccountFilter ?? '')
-  const [accountTo, setAccountTo] = usePageState(`ledger-to:${periodId}`,initialAccountFilter ?? '')
+  const [accountFrom, setAccountFrom] = useState(initialAccountFilter ?? '')
+  const [accountTo, setAccountTo] = useState(initialAccountFilter ?? '')
   // The account range the ledger is fetched for: what Filtrera applied. A new
   // period, window, dimension or drill-down applies the drill-down's account
   // when there is one (into the fields too), else what the fields hold.
   const [applied, setApplied] = useState({ from: accountFrom, to: accountTo })
+  const [savedRange,setSavedRange,rangeReady] = usePageState(`ledger-range:${periodId}:${initialAccountFilter ?? ''}`, {from:initialAccountFilter ?? '',to:initialAccountFilter ?? ''})
+  useEffect(()=>{
+    if(!rangeReady)return
+    setAccountFrom(savedRange.from)
+    setAccountTo(savedRange.to)
+    setApplied(savedRange)
+  },[rangeReady,savedRange])
   const scope = `${reportQuery(periodId, dateRange, dimensionFilter)}|${initialAccountFilter ?? ''}`
   const [appliedScope, setAppliedScope] = useState(scope)
   if (appliedScope !== scope) {
@@ -153,6 +160,7 @@ export default function GeneralLedgerView({ periodId, initialAccountFilter, dime
 
   // Filtrera with an unchanged range fetches again, as it always has.
   const applyAccountRange = () => {
+    setSavedRange({from:accountFrom,to:accountTo})
     if (applied.from === accountFrom && applied.to === accountTo) refetch()
     else setApplied({ from: accountFrom, to: accountTo })
   }
