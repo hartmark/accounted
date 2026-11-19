@@ -1,5 +1,6 @@
 'use client'
 
+import MigrationDifferenceTable from './MigrationDifferenceTable'
 import { useState } from 'react'
 import Link from 'next/link'
 import { useTranslations } from 'next-intl'
@@ -136,6 +137,7 @@ function IssueLine({ issue }: { issue: ProviderMigrationIssue }) {
         {facts && <span className="tabular-nums text-muted-foreground">{facts}</span>}
       </div>
       {detail && <p className="mt-1 text-xs tabular-nums text-muted-foreground">{detail}</p>}
-    </li>
+    {issue.error_code === 'MIGRATION_SOURCE_CHANGED' && <MigrationDifferenceTable resource={issue.resource} differences={issue.differences} unavailable={issue.comparisonUnavailable} />}
+      </li>
   )
 }

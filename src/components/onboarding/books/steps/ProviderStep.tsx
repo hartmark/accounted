@@ -258,10 +258,11 @@ export function ProviderStep({ ctx }: { ctx: BooksCtx }) {
   /* ── preview: the facts, the years, the sentence ─────────────────── */
   const sourceYears = useMemo(() => preview?.sourceYears ?? [], [preview])
   const previewCounts = previewCountsForSelection(preview?.sieStats, years)
-  const maxYears = preview?.maxSelectedYears ?? 6
+  const maxYears = preview?.maxSelectedYears === null ? Infinity : preview?.maxSelectedYears ?? 6
   // A tick always lands; over the run's limit the step says so and keeps the
   // import closed (lib/providers/year-selection).
   const tooManyYears = fiscalYearSelectionProblem(years, maxYears) === 'too_many'
+
   const companyName = preview?.companyInfo?.company_name || preview?.consent.companyName || ''
   const scopeParts = useMemo(() => {
     const parts: string[] = []

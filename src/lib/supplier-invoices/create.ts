@@ -1461,6 +1461,7 @@ async function previewRegistrationVerifikat(
  * supplier_invoice_number) gets its own code with the existing row, and its
  * credit note when it was credited, so the dashboard can offer "undo
  * crediting" and an agent can fetch the original.
+
  */
 async function duplicateOrInsertFailure(
   ctx: CreateSupplierInvoiceContext,

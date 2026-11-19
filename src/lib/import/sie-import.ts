@@ -15,6 +15,7 @@ import type {
   ImportPreview,
   FiscalYearPrecheck,
   SIEImport,
+
   SIETransactionLine,
   SIEObjectBalance,
   SIEAccountMappingRecord,
@@ -1609,6 +1610,7 @@ export async function saveMappings(
  * (UNIQUE (company_id, source_account)), so the pages never overlap or skip.
  */
 export async function loadMappings(
+
   supabase: SupabaseClient,
   companyId: string,
 ): Promise<SIEAccountMappingRecord[]> {

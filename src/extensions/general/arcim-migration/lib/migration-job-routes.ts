@@ -1,7 +1,12 @@
+import { readMigrationExtraDetails } from './migration-status-details'
+import { readMigrationSkipReasons, readPendingImportPayables } from './migration-result-details'
+import { ownInvoiceNumber, invoicePartyName } from './invoice-review-labels'
+export { ownInvoiceNumber, invoicePartyName } from './invoice-review-labels'
 import { after, NextResponse } from 'next/server'
 import { z } from 'zod'
 import type { ApiRouteDefinition, ExtensionContext } from '@/lib/extensions/types'
 import { createServiceClientNoCookies } from '@/lib/auth/api-keys'
+import { requireWritePermission } from '@/lib/auth/require-write'
 import { validateBody } from '@/lib/api/validate'
 import {
   MIGRATION_RESOURCES, isTransientIssueCode,
@@ -21,11 +26,28 @@ import { subscriptionRefusal } from '@/lib/providers/with-provider-call'
 import { fetchAllRows } from '@/lib/supabase/fetch-all'
 import { whereSieImportInPlace } from '@/lib/bookkeeping/sie-import-in-place'
 
+function requireContext(ctx: ExtensionContext | undefined): ctx is ExtensionContext {
+ return !!(ctx?.supabase && ctx.companyId && ctx.userId)
+}
+
 const CreateSchema = z.object({
   consentId: z.uuid(), resources: z.array(z.enum(MIGRATION_RESOURCES)).min(1).max(4),
   /** Fortnox's paid supplier invoices too, for this sync only. */
   allSupplierInvoices: z.boolean().optional(),
+  years:z.array(z.number().int().min(1900).max(2200)).min(1).max(301).optional(),
 }).strict()
+const PreflightSchema = z.object({resources:z.array(z.enum(MIGRATION_RESOURCES)).max(4)}).strict()
+const FinishSchema = z.object({jobId:z.uuid()}).strict()
+
+/** Shared by the wizard preflight and direct job admission/retry. Never exposes the key. */
+function encryptionRefusal(ctx: ExtensionContext): NextResponse | null {
+  if (process.env.PERSONNUMMER_ENCRYPTION_KEY?.trim()) return null
+  return errorResponseFromCode('PERSONNUMMER_ENCRYPTION_NOT_CONFIGURED', ctx.log, {
+    messageSv: 'Registerimporten kan inte starta: servern saknar krypteringsnyckeln PERSONNUMMER_ENCRYPTION_KEY. Administratören behöver konfigurera den innan du försöker igen.',
+    messageEn: 'Register import cannot start: the server is missing PERSONNUMMER_ENCRYPTION_KEY. An administrator must configure it before you retry.',
+  })
+}
+
 const JobSchema = z.object({ jobId: z.uuid(), consentId: z.uuid().optional() }).strict()
 const AcceptSchema = z.object({ jobId: z.uuid() }).strict()
 
@@ -132,7 +154,7 @@ function labelFromSnapshot(resource: MigrationResource, payload: string): Migrat
   const invoice = dto as SalesInvoiceDto | SupplierInvoiceDto
   const party = resource === 'salesInvoices' ? (invoice as SalesInvoiceDto).customer : (invoice as SupplierInvoiceDto).supplier
   return {
-    number: invoice.invoiceNumber || null,
+    number: ownInvoiceNumber(invoice, invoice.id) || null,
     date: typeof invoice.issueDate === 'string' && invoice.issueDate ? invoice.issueDate.slice(0, 10) : null,
     amount: finite(invoice.legalMonetaryTotal?.payableAmount?.value),
     currency: invoice.currencyCode || null,
@@ -236,15 +258,67 @@ export async function readMigrationStatus(ctx: ExtensionContext, jobId?: string)
   const unchanged = acceptable && total > 0 && staleOutsideYears === 0
     && issues.every(issue => issue.repeated && !isTransientIssueCode(issue.error_code))
     && (!truncated || await everyRecordRepeated(ctx, job.id))
-  return { job, counts: resourceCounts, issues, review: { total, acceptable, truncated, unchanged, staleOutsideYears } }
+  const extra = reviewable && job.phase === 'completed' ? await readMigrationExtraDetails(ctx.supabase,ctx.companyId,job,resourceCounts) : {comparisons:new Map(),changes:[],skipped:[]}
+  const skipReasons = reviewable && job.phase === 'completed' ? await readMigrationSkipReasons(ctx.supabase,ctx.companyId,job.id) : {}
+  const paymentsAwaitingDueDate = job.phase === 'completed' ? await readPendingImportPayables(ctx.supabase,ctx.companyId,job.id) : undefined
+  return { job, counts: resourceCounts.map(row=>({...row,skipReasons:skipReasons[row.resource]})),
+    issues:issues.map(issue=>({...issue,...extra.comparisons.get(issue.id),
+      invoiceNumber:issue.label?.number ?? undefined, partyName:issue.label?.party ?? undefined,
+      invoiceDate:issue.label?.date ?? undefined, amount:issue.label?.amount ?? undefined,
+      currency:issue.label?.currency ?? undefined,targetId:issue.target_id,errorPhase:issue.error_phase})),
+    changes:extra.changes,skipped:extra.skipped,paymentsAwaitingDueDate,
+    review: { total, acceptable, truncated, unchanged, staleOutsideYears } }
+
 }
 
 export const migrationJobRoutes: ApiRouteDefinition[] = [
+  {
+    method: 'GET', path: '/migration-jobs/reviews',
+    handler: async (_request, ctx) => {
+      if (!requireContext(ctx)) return error('UNAUTHORIZED', 401)
+      const { data, error: readError } = await ctx.supabase.from('migration_jobs')
+        .select('id,review_deferred_at,state').eq('company_id', ctx.companyId)
+        .not('review_deferred_at', 'is', null).order('review_deferred_at', { ascending: false }).limit(50)
+      if (readError) return error('MIGRATION_LOOKUP_FAILED', 500)
+      return NextResponse.json({ data: data ?? [] }, { headers: { 'Cache-Control': 'no-store' } })
+    },
+  },
+  {
+    method: 'POST', path: '/migration-jobs/finish-with-review',
+    handler: async (request, ctx) => {
+      if (!requireContext(ctx)) return error('UNAUTHORIZED', 401)
+      const body = await validateBody(request, FinishSchema)
+      if (!body.success) return body.response
+      const write = await requireWritePermission(ctx.supabase, ctx.userId, { companyId: ctx.companyId })
+      if (!write.ok) return write.response
+      const { data, error: finishError } = await createServiceClientNoCookies().rpc('finish_provider_migration_with_review', {
+        p_job_id: body.data.jobId, p_company_id: ctx.companyId, p_user_id: ctx.userId,
+      })
+      if (finishError) return error('MIGRATION_REVIEW_NOT_FINISHABLE', 409)
+      return NextResponse.json({ data: { remaining: data } })
+    },
+  },
+  {
+    method: 'POST', path: '/migration-jobs/preflight',
+    handler: async (request, ctx) => {
+      if (!requireContext(ctx)) return error('UNAUTHORIZED', 401)
+      const body = await validateBody(request, PreflightSchema)
+      if (!body.success) return body.response
+      if (body.data.resources.length) {
+        const refusal = encryptionRefusal(ctx)
+        if (refusal) return refusal
+      }
+      return NextResponse.json({ data: { ready: true } }, { headers: { 'Cache-Control': 'no-store' } })
+    },
+  },
+
   {
     method: 'POST', path: '/migration-jobs',
     handler: async (request, ctx) => {
       const body = await validateBody(request, CreateSchema)
       if (!body.success) return body.response
+      const encryption = encryptionRefusal(ctx)
+      if (encryption) return encryption
       const resources = MIGRATION_RESOURCES.filter(resource => body.data.resources.includes(resource))
       const { data: consent, error: consentError } = await ctx.supabase.from('provider_consents').select('id')
         .eq('id', body.data.consentId).eq('company_id', ctx.companyId).in('status', [0, 1]).maybeSingle()
@@ -259,7 +333,9 @@ export const migrationJobRoutes: ApiRouteDefinition[] = [
       // The request for paid supplier invoices rides on the job's own scope,
       // so a resumed or reconnected job keeps it and the next sync starts
       // without it (crm#1114).
-      const scope = fiscalYearScopeFromImports(imports)
+      if (body.data.years?.some(year => !imports.some(row => Number(row.fiscal_year_start?.slice(0,4)) === year))) return error('PROVIDER_SIE_IMPORT_REQUIRED',400)
+      const scope = fiscalYearScopeFromImports(imports,{years:body.data.years})
+      if (body.data.years && !scope) return error('PROVIDER_SIE_IMPORT_REQUIRED',400)
       const allSupplierInvoices = body.data.allSupplierInvoices === true && resources.includes('supplierInvoices')
       const { data: job, error: createError } = await createServiceClientNoCookies().rpc('create_provider_migration_job', {
         p_company_id: ctx.companyId, p_user_id: ctx.userId, p_consent_id: body.data.consentId,
@@ -286,12 +362,14 @@ export const migrationJobRoutes: ApiRouteDefinition[] = [
   ...(['run', 'retry'] as const).map(action => ({
     method: 'POST' as const, path: `/migration-jobs/${action}`,
     handler: async (request: Request, ctx: ExtensionContext) => {
+      const encryption = encryptionRefusal(ctx)
+      if (encryption) return encryption
       const body = await validateBody(request, JobSchema)
       if (!body.success) return body.response
       const job = await readJob(ctx, body.data.jobId)
       if (!job) return error('NOT_FOUND', 404)
       if (action === 'retry') {
-        if (!['needs_attention', 'retry_wait'].includes(job.state)) return error('MIGRATION_NOT_RETRYABLE', 409)
+        if (!['needs_attention', 'retry_wait'].includes(job.state) && !(job.state === 'completed' && job.review_deferred_at)) return error('MIGRATION_NOT_RETRYABLE', 409)
         if (body.data.consentId) {
           const refusal = await sourceIdentityRefusal(ctx, body.data.consentId)
           if (refusal) return refusal

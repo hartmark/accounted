@@ -13,6 +13,9 @@ import { describe, it, expect, beforeEach, vi, type Mock } from 'vitest'
 import { createMockRequest, parseJsonResponse } from '@/tests/helpers'
 import type { ExtensionContext } from '@/lib/extensions/types'
 
+vi.mock('@/lib/import/sie-resync', () => ({ planSIEResync: vi.fn().mockResolvedValue(null) }))
+vi.mock('@/lib/supabase/server', () => ({ createClient: vi.fn() }))
+
 vi.mock('@/lib/import/sie-import', () => ({ loadMappings: vi.fn(), generateImportPreview: vi.fn() }))
 vi.mock('@/lib/import/sie-jobs', async (load) => ({
   ...await load<typeof import('@/lib/import/sie-jobs')>(),
@@ -26,6 +29,9 @@ import { submitSIEJob, jobDatabaseError, SIEJobDatabaseError } from '@/lib/impor
 import { liveCorrectionSentence } from '@/lib/import/sie-live-corrections'
 import { userFacing } from '@/lib/errors/user-facing'
 import { memoryIntakeStorage, intakePath } from './intake-storage'
+import { createClient } from '@/lib/supabase/server'
+import { planSIEResync } from '@/lib/import/sie-resync'
+
 
 type RouteHandler = (request: Request, ctx?: ExtensionContext) => Promise<Response>
 const handler = (arcimMigrationExtension.apiRoutes ?? []).find(
@@ -60,6 +66,8 @@ const post = (body: Record<string, unknown>) => handler(
 describe('POST /import-sie: job refusals', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    vi.mocked(planSIEResync).mockResolvedValue(null)
+
   })
 
   it('400 without the storage path or mappings', async () => {
@@ -186,4 +194,64 @@ describe('POST /import-sie: job refusals', () => {
       expect.objectContaining({ onExistingPeriod: 'block' }), expect.any(File), 'provider_migration',
       expect.objectContaining({ source: 'migration', via: 'provider_migration' }))
   })
+  it.each([true, false])('preserves the explicit no-document choice in a new job: %s', async markImportedNoDocRequired => {
+    vi.mocked(submitSIEJob).mockResolvedValueOnce({ id: 'new-import', job_state: 'queued' } as never)
+    const response = await post({ ...BODY, options: { ...BODY.options, markImportedNoDocRequired } })
+    expect(response.status).toBe(202)
+    expect(submitSIEJob).toHaveBeenCalledWith(expect.anything(), 'company-1', 'user-1', SIE, MAPPINGS,
+      expect.objectContaining({ markImportedNoDocRequired }), expect.any(File), 'provider_migration', expect.objectContaining({source:'migration'}))
+  })
+
+  it('does not mark existing vouchers during a no-addition resync even with the choice enabled', async () => {
+    vi.mocked(planSIEResync).mockResolvedValueOnce({ periodId: 'period', added: 0, unchanged: 12,
+      reviewCount: 0, reviews: [], metadataChanged: false, newOrdinals: [] })
+    const response = await post({ ...BODY, options: { ...BODY.options, markImportedNoDocRequired: true } })
+    expect(response.status).toBe(200)
+    expect(submitSIEJob).not.toHaveBeenCalled()
+  })
+
+  it('ignores an older client replacement request and admits only incremental additions', async () => {
+    vi.mocked(planSIEResync).mockResolvedValueOnce({periodId:'period',added:1,unchanged:12,reviewCount:0,reviews:[],metadataChanged:false,newOrdinals:[12]})
+    vi.mocked(submitSIEJob).mockResolvedValueOnce({id:'delta-1',job_state:'queued'} as never)
+    const {status}=await parseJsonResponse(await post({...BODY,options:{...BODY.options,supersedesImportId:'old-import'}}))
+    expect(status).toBe(202)
+    expect(submitSIEJob).toHaveBeenCalledWith(expect.anything(),'company-1','user-1',expect.any(String),expect.any(Array),
+      expect.objectContaining({onExistingPeriod:'incremental',importOpeningBalances:false,importTransactions:true,supersedesImportId:undefined}),expect.any(File),'provider_migration',expect.objectContaining({source:'migration'}))
+  })
+
+  it('resolves a SIE4I file without RAR before planning its incremental comparison', async () => {
+    const period = { period_start: '2026-01-01', period_end: '2026-12-31' }
+    const bounds = { select: vi.fn(), eq: vi.fn(), lte: vi.fn(), gte: vi.fn(), limit: vi.fn() }
+    bounds.select.mockReturnValue(bounds)
+    bounds.eq.mockReturnValue(bounds)
+    bounds.lte.mockReturnValue(bounds)
+    bounds.gte.mockReturnValue(bounds)
+    Object.assign(bounds,{order:vi.fn().mockResolvedValue({data:[period],error:null})})
+    const oldStorage=ctx.supabase
+    Object.assign(ctx,{supabase:{storage:memoryIntakeStorage({[PATH]:SIE.replace('#RAR 0 20260101 20261231\n','')}).storage,from:vi.fn().mockReturnValue(bounds)}})
+    vi.mocked(planSIEResync).mockResolvedValueOnce({ periodId: 'period', added: 0, unchanged: 1,
+      reviewCount: 0, reviews: [], metadataChanged: false, newOrdinals: [] })
+
+    const { status, body } = await parseJsonResponse<{ result: { details: { fiscalYear: { start: string; end: string } } } }>(
+      await post({ ...BODY, rawContent: SIE.replace('#RAR 0 20260101 20261231\n', '') }),
+    )
+
+    expect(status).toBe(200)
+    expect(bounds.eq).toHaveBeenCalledWith('company_id', 'company-1')
+    expect(vi.mocked(planSIEResync).mock.calls[0][3].stats).toMatchObject({
+      fiscalYearStart: period.period_start, fiscalYearEnd: period.period_end,
+    })
+    expect(body.result.details.fiscalYear).toEqual({ start: period.period_start, end: period.period_end })
+    expect(submitSIEJob).not.toHaveBeenCalled()
+  })
+
+  it('returns current reviews without admitting a job when there are no additions', async () => {
+    vi.mocked(planSIEResync).mockResolvedValueOnce({periodId:'closed-period',added:0,unchanged:12,reviewCount:1,
+      reviews:[{sourceId:'A2',kind:'changed',entryId:'posted'}],metadataChanged:false,newOrdinals:[]})
+    const {status,body}=await parseJsonResponse<{result:{resync:{reviewCount:number};journalEntriesCreated:number}}>(await post(BODY))
+    expect(status).toBe(200)
+    expect(body.result).toMatchObject({journalEntriesCreated:0,resync:{unchanged:12,reviewCount:1}})
+    expect(submitSIEJob).not.toHaveBeenCalled()
+  })
+
 })

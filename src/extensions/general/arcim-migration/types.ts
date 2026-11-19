@@ -29,6 +29,7 @@ export type {
 export type ArcimProvider = ProviderName
 export const ARCIM_PROVIDERS = MIGRATION_PROVIDERS
 
+
 // ── Migration state ─────────────────────────────────────────────────
 
 export interface MigrationProgress {
@@ -40,6 +41,8 @@ export interface MigrationProgress {
 }
 
 export interface SkipReasons {
+  historicalReceivable?: number
+  creditNoteInOldShape?: number
   duplicate?: number
   inactive?: number
   failed?: number
@@ -108,6 +111,8 @@ export interface MigrationStepError {
  * reach, so a partially hydrated run is visible rather than looking complete.
  */
 export interface InvoiceStepResult {
+  paymentsAwaitingDueDate?: import('@/lib/providers/migration-contract').PendingImportPayables
+  unchanged?: number
   total: number
   imported: number
   skipped: number
@@ -145,8 +150,8 @@ export interface InvoiceStepResult {
 
 export interface MigrationResults {
   companyInfo?: { imported: boolean }
-  customers?: { total: number; imported: number; updated?: number; skipped: number; skipReasons?: SkipReasons; errorSample?: string }
-  suppliers?: { total: number; imported: number; skipped: number; skipReasons?: SkipReasons; errorSample?: string }
+  customers?: { unchanged?: number; total: number; imported: number; updated?: number; skipped: number; skipReasons?: SkipReasons; errorSample?: string }
+  suppliers?: { unchanged?: number; total: number; imported: number; skipped: number; skipReasons?: SkipReasons; errorSample?: string }
   salesInvoices?: InvoiceStepResult
   supplierInvoices?: InvoiceStepResult
   /**

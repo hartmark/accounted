@@ -35,7 +35,8 @@ export interface SIEJobOptions {
    *  every resumed preparation create the same accounts. */
   onlyUsedAccounts?: boolean
   /** 'append' adds only the file's vouchers the year's import does not hold, as their own batch (sie-append.ts). */
-  onExistingPeriod?: 'block' | 'replace' | 'append'
+  onExistingPeriod?: 'block' | 'replace' | 'append' | 'incremental'
+
   supersedesImportId?: string
   /** Append: also book the possible duplicates (same date and lines as a posted entry). */
   includePossibleDuplicates?: boolean
@@ -585,7 +586,8 @@ export async function submitSIEJob(supabase: SupabaseClient, companyId: string, 
     p_company_id: companyId, p_actor: userId, p_period_id: periodId, p_filename: options.filename,
     p_file_hash: sourceHash, p_manifest: { input, file_storage_path: path, originalSource,
       ...(commitActor ? { commit_actor: commitActor } : {}) },
-    p_supersedes_import_id: replacing ? options.supersedesImportId : predecessor?.id ?? null,
+    p_supersedes_import_id: replacing ? options.supersedesImportId : options.onExistingPeriod === 'incremental' ? null : predecessor?.id ?? null,
+
   })
   if (error) throw await nameLiveCorrections(jobDatabaseError(error), supabase, companyId,
     replacing ? options.supersedesImportId : undefined, 'replace')

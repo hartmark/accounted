@@ -57,7 +57,7 @@ const BASE_OPTIONS: Options = {
   importAssets: true,
   voucherSeries: 'B',
   replaceImportedYears: [],
-  onlyUsedAccounts: false,
+  onlyUsedAccounts: false, markImportedNoDocRequired: false,
 }
 
 /** The shape of the second run in PH 185: two older years added, three already imported. */

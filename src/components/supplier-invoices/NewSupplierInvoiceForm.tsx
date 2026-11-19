@@ -340,6 +340,7 @@ export default function NewSupplierInvoiceForm({
   // Fakturabelopp and Moms as the invoice states them (total-first): they
   // fill a single empty row, switch öresavrundning on when the gap is
   // whole-krona rounding, and otherwise cross-check. Never in the payload.
+
   const [fakturaTotalStr, setFakturaTotalStr] = useState('')
   const [fakturaVatStr, setFakturaVatStr] = useState('')
   // The net the total-first fill last put on the single row: a row amount
@@ -890,6 +891,7 @@ export default function NewSupplierInvoiceForm({
   })
   // On one other invoice of the supplier only: acknowledged in the review dialog.
   const reuseToAcknowledge = duplicates?.reference?.needs_acknowledgement ? duplicates.reference : null
+
 
   // Auto-fetch Riksbanken exchange rate when currency switches to non-SEK and
   // the user hasn't typed a custom rate yet. Re-fetches when the invoice

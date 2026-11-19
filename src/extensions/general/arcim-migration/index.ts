@@ -1,10 +1,16 @@
+import { streamDocumentImport } from './lib/document-import-progress'
+import { documentReviewRoutes } from './lib/document-review-routes'
+import { planSIEResync, type SIEResyncPlan } from '@/lib/import/sie-resync'
+import { historicalReceivableRoutes } from './lib/historical-receivable-routes'
+import { BokioApiError } from '@/lib/providers/bokio/client'
 import { migrationJobRoutes } from './lib/migration-job-routes'
 import { invoiceCompletionRoutes } from './lib/invoice-completion-routes'
 import { deductionBackfillRoutes } from './lib/deduction-backfill-routes'
 import { companyMismatchMessages } from './lib/company-mismatch-message'
 import { archiveSIEIntakeText, readSIEIntakeFile, SIEArchiveUnavailableError } from '@/lib/import/sie-intake'
 import { buildTheaterModel } from '@/lib/import/theater-model'
-import { submitSIEJob } from '@/lib/import/sie-jobs'
+import { resolveSIEFiscalYear, submitSIEJob } from '@/lib/import/sie-jobs'
+
 import { runSIEWorker } from '@/lib/import/sie-job-worker'
 import type { Extension, ExtensionContext } from '@/lib/extensions/types'
 import { after, NextResponse } from 'next/server'
@@ -40,6 +46,7 @@ import {
   FiscalYearSelectionError,
   MAX_SELECTED_FISCAL_YEARS,
   type SieFetchFailure,
+
   type SourceFiscalYear,
 } from './lib/sie-fetcher'
 import { mapCompanyInfo } from './lib/entity-mapper'
@@ -79,6 +86,7 @@ import { applySourceVatCodes } from '@/lib/import/account-vat-treatment'
 import { fortnoxVatCodeToTreatment } from '@/lib/providers/fortnox/vat-codes'
 import { loadMappings, generateImportPreview, findOverlappingPeriodImports } from '@/lib/import/sie-import'
 import { buildMappingTargets } from './lib/mapping-targets'
+import { rememberCompletedVatReviews } from './lib/remembered-vat-reviews'
 import type { ProviderName } from '@/lib/providers/types'
 import { missingTokenCredential } from '@/lib/providers/catalog'
 import type { ProviderPreviewCounts } from '@/lib/providers/preview-counts'
@@ -323,6 +331,16 @@ async function buildBjornLundenActivationUrl(
  * only the error itself holds. Without the override the code would fall
  * through entryFor() to INTERNAL_ERROR and answer 500.
  */
+/** Keep SIE permission failures consistent across preview and year selection. */
+function bokioSiePermissionResponse(error: unknown): NextResponse | null {
+  if (!(error instanceof BokioApiError) || error.statusCode !== 403) return null
+  return errorResponseFromCode('PROVIDER_RESOURCE_FORBIDDEN', moduleLog, {
+    status: 403,
+    messageSv: 'Bokio nekade SIE-exporten. Kontrollera att integrationstoken har behörigheterna fiscal-years:read och sie:read och att abonnemanget tillåter API-export. Uppdatera token i anslutningen om du skapar en ny.',
+    messageEn: 'Bokio denied the SIE export. Check that the integration token has the fiscal-years:read and sie:read scopes and that your plan allows API export. Update the connection token if you create a new one.',
+  })
+}
+
 function providerFailureResponse(error: unknown, fallbackCode: string): NextResponse {
   const classified = classifyProviderError(error)
   const ctx = {
@@ -376,6 +394,8 @@ export const arcimMigrationExtension: Extension = {
 
   apiRoutes: [
     ...migrationJobRoutes,
+    ...documentReviewRoutes,
+    ...historicalReceivableRoutes,
     ...invoiceCompletionRoutes,
     ...deductionBackfillRoutes,
     // ── Check existing connections and import history ──────────────
@@ -1199,6 +1219,7 @@ export const arcimMigrationExtension: Extension = {
               // export per extra year, the same work /sie-data repeats right
               // after: honest numbers are worth it.
               const { files, sourceYears: source, failedYears } = await fetchProviderSieFiles(
+
                 provider,
                 resolved.accessToken,
                 resolved.providerCompanyId,
@@ -1215,6 +1236,7 @@ export const arcimMigrationExtension: Extension = {
                   // wizard shows the counts only while exactly these years
                   // are ticked (previewCountsForSelection, crm#1037).
                   fiscalYears: files.map((f) => f.fiscalYear),
+
                 }
               } else if (failedYears.length > 0) {
                 // The year list came back, but no year's export did: the
@@ -1234,6 +1256,10 @@ export const arcimMigrationExtension: Extension = {
               // orchestrator reads its company step the same way.
               sieError = classifySieFetchFailure(err, { grantProven: mapped !== null })
               log.info(`SIE export failed (${sieError.code}):`, err instanceof Error ? err.message : String(err))
+              const denied = bokioSiePermissionResponse(err)
+              if (denied) return denied
+              log.info('SIE export failed:', err instanceof Error ? err.message : String(err))
+
             }
           }
 
@@ -1278,10 +1304,11 @@ export const arcimMigrationExtension: Extension = {
             sourceYears,
             // The picker enforces the same cap as /sie-data, read from here
             // rather than duplicated in the client.
-            maxSelectedYears: MAX_SELECTED_FISCAL_YEARS,
+            maxSelectedYears: null,
             // Start years of the completed imports, oldest first: the picker
             // skips them when the source has more years than one run takes.
             importedFiscalYears,
+
             assetStats,
             hasSieData: (sieImportCount ?? 0) > 0,
           })
@@ -1333,16 +1360,8 @@ export const arcimMigrationExtension: Extension = {
             })
           }
           requestedYears = [...new Set(parsed)].sort((a, b) => a - b)
-          // The resource bound: each selected year is one provider export
-          // fetched and parsed in this invocation (derivation on the
-          // constant). Rejected before any provider call.
-          if (requestedYears.length > MAX_SELECTED_FISCAL_YEARS) {
-            return errorResponseFromCode('VALIDATION_ERROR', moduleLog, {
-              messageSv: `Högst ${MAX_SELECTED_FISCAL_YEARS} räkenskapsår kan hämtas per körning. Välj färre år; resten kan hämtas i en ny körning, äldst först.`,
-              messageEn: `At most ${MAX_SELECTED_FISCAL_YEARS} fiscal years can be fetched per run. Select fewer years; fetch the rest in a second run, oldest first.`,
-              details: { field: 'years', reason: 'too_many', max: MAX_SELECTED_FISCAL_YEARS, requested: requestedYears.length },
-            })
-          }
+
+
         }
 
         try {
@@ -1384,10 +1403,7 @@ export const arcimMigrationExtension: Extension = {
             // Name the selection: the explicit years when the picker sent
             // them, else the rolling default window (interpolated so the
             // text never goes stale).
-            const selection = requestedYears ?? [...getAllowedFiscalYears()].sort((a, b) => a - b)
-            const range = requestedYears
-              ? requestedYears.join(', ')
-              : `${selection[0]}-${selection[selection.length - 1]}`
+            const range = requestedYears ? requestedYears.join(', ') : 'alla tillgängliga år'
             return errorResponseFromCode('PROVIDER_SIE_NO_YEARS', moduleLog, {
               messageSv: `Inga räkenskapsår ${range} hittades hos leverantören.`,
               messageEn: `No fiscal years available for ${range}.`,
@@ -1478,6 +1494,8 @@ export const arcimMigrationExtension: Extension = {
             log.warn(`Account mapping: ${provider} chart fetch failed, VAT codes fall back to label suggestions`, err as Error)
           }
 
+          mappings = await rememberCompletedVatReviews(supabase, companyId, mappings)
+
           const mappingStats = getMappingStats(mappings)
 
           log.info(`Account mapping: ${allAccounts.length} unique accounts across ${sieFiles.length} files, ${mappingStats.unmapped} unmapped`)
@@ -1504,13 +1522,17 @@ export const arcimMigrationExtension: Extension = {
           // Detect prior imports by *fiscal period overlap*, not file hash.
           // Providers embed the export-time #GEN date in every SIE export so
           // the hash always changes between syncs; only the period stays
-          // stable. A re-sync replaces the prior import for the same period.
+          // stable. A re-sync compares source references within the same period.
           const fileStatuses: {
             fiscalYear: number
             storagePath: string
             filename: string
             bytes: number
             voucherCount: number
+            fiscalYearStart: string | null
+            fiscalYearEnd: string | null
+            delta: SIEResyncPlan | null
+
             previousImport: {
               id: string
               importedAt: string | null
@@ -1535,8 +1557,8 @@ export const arcimMigrationExtension: Extension = {
               // partially deleted data). The unordered .limit(1) this
               // replaces picked an arbitrary row, so the wizard could show
               // a stale "ersätter tidigare import från <date>" (issue #1667).
-              // Import-time replace resolves ALL rows regardless of which
-              // one is displayed here.
+              // Incremental comparison resolves the active source references
+              // independently of which import is displayed here.
               const overlapping = await findOverlappingPeriodImports(
                 supabase, companyId, fyStart, fyEnd
               )
@@ -1549,6 +1571,10 @@ export const arcimMigrationExtension: Extension = {
               filename: `migration-sie-${file.fiscalYear}.se`,
               bytes: archived[index].bytes,
               voucherCount: fileParsed.stats.totalVouchers,
+              fiscalYearStart: fyStart,
+              fiscalYearEnd: fyEnd,
+              delta: priorImport ? await planSIEResync(supabase, companyId, ctx.userId, fileParsed, mappings) : null,
+
               previousImport: priorImport
                 ? {
                     id: priorImport.id,
@@ -1581,13 +1607,18 @@ export const arcimMigrationExtension: Extension = {
               filename: f.filename,
               bytes: f.bytes,
               voucherCount: f.voucherCount,
+              fiscalYearStart: f.fiscalYearStart,
+              fiscalYearEnd: f.fiscalYearEnd,
+
               previousImport: f.previousImport,
+              delta: f.delta ? {added:f.delta.added,unchanged:f.delta.unchanged,reviewCount:f.delta.reviewCount,
+                reviews:f.delta.reviews,metadataChanged:f.delta.metadataChanged} : null,
               // Back-compat for older wizard builds: an `alreadyImported`
               // boolean. The new wizard reads `previousImport` directly.
               alreadyImported: !!f.previousImport,
               importedAt: f.previousImport?.importedAt ?? null,
             })),
-            allImported: false,
+            allImported: fileStatuses.length > 0 && fileStatuses.every(f => f.delta && f.delta.added === 0 && f.delta.reviewCount === 0 && !f.delta.metadataChanged),
             newFileCount: fileStatuses.length - replacedFileCount,
             replacedFileCount,
             // Allowed years whose provider export failed: the wizard warns
@@ -1607,6 +1638,9 @@ export const arcimMigrationExtension: Extension = {
           if (error instanceof SIEArchiveUnavailableError) {
             return errorResponseFromCode('SIE_INTAKE_ARCHIVE_UNAVAILABLE', moduleLog, { requestId: ctx?.requestId })
           }
+          const denied = bokioSiePermissionResponse(error)
+          if (denied) return denied
+
           return providerFailureResponse(error, 'PROVIDER_SIE_FETCH_FAILED')
         }
       },
@@ -1635,8 +1669,11 @@ export const arcimMigrationExtension: Extension = {
             importTransactions: boolean
             voucherSeries?: string
             updateAccountNames?: boolean
+            markImportedNoDocRequired?: boolean
             supersedesImportId?: string
             onlyUsedAccounts?: boolean
+            incremental?: boolean
+
           }
         } | null
         const { storagePath, filename = 'migration.se', mappings, options } = body ?? {}
@@ -1709,12 +1746,26 @@ export const arcimMigrationExtension: Extension = {
             })
           }
 
+          await resolveSIEFiscalYear(supabase, companyId, parsed)
+          const delta = await planSIEResync(supabase,companyId,ctx.userId,parsed,mappings,options.voucherSeries)
+          // A comparison with no new vouchers never needs a write or an open
+          // period. Return current reviews even for an identical archived file.
+          if (delta && delta.added === 0) {
+            return NextResponse.json({result:{success:true,importId:null,fiscalPeriodId:delta.periodId,
+              openingBalanceEntryId:null,journalEntriesCreated:0,journalEntryIds:[],errors:[],
+              warnings:artifactScan.flagged ? [formatSieArtifactWarning(artifactScan)] : [],
+              resync:{added:delta.added,unchanged:delta.unchanged,reviewCount:delta.reviewCount,
+                reviews:delta.reviews,metadataChanged:delta.metadataChanged},
+              details:{fiscalYear:{start:parsed.stats.fiscalYearStart!,end:parsed.stats.fiscalYearEnd!},retriedBatches:0,failedBatches:0}}})
+          }
           const job = await submitSIEJob(supabase,companyId,ctx.userId,rawContent,mappings,{
             filename: 'migration-sie-'+parsed.stats.fiscalYearStart+'.se',
             ...options,updateAccountNames:options.updateAccountNames ?? true,
-            onExistingPeriod:options.supersedesImportId ? 'replace' : 'block',
-          },originalFile,'provider_migration',{source:'migration',via:'provider_migration',
-            fetchedBy:{type:'user',user_id:ctx.userId,label:'provider-migration'}})
+            ...(delta ? {importOpeningBalances:false,importTransactions:true} : {}),
+            supersedesImportId:undefined,
+            onExistingPeriod:delta ? 'incremental' : 'block',
+          },originalFile,'provider_migration',{source:'migration',via:'provider_migration',fetchedBy:{type:'user',user_id:ctx.userId,label:'provider-migration'}})
+
           after(async () => { await runSIEWorker({importId:job.id}) })
           return NextResponse.json({importId:job.id,state:job.job_state,
             warnings:artifactScan.flagged ? [formatSieArtifactWarning(artifactScan)] : [],
@@ -2152,17 +2203,20 @@ export const arcimMigrationExtension: Extension = {
 
         let consentId: string | undefined
         let dryRun = false
+        let progress = false
         let cursor: string | null = null
         let run: string | null = null
         try {
           const body = (await request.json()) as {
             consentId?: string
             dryRun?: boolean
+            progress?: boolean
             cursor?: string
             run?: string
           }
           consentId = body?.consentId
           dryRun = body?.dryRun === true
+          progress = body?.progress === true
           // Resume point from a previous partial call (the last handled
           // provider attachment id, see import-documents.ts); anything else
           // restarts from the top, which is always safe: already-archived
@@ -2251,8 +2305,10 @@ export const arcimMigrationExtension: Extension = {
         // another tab moved meanwhile is not counted twice.
         const ownRun = cursor !== null && run !== null && kept?.startedAt === run ? kept : null
 
+        const execute = async (onProgress?: Parameters<typeof importProviderDocuments>[0]['onProgress']) => {
         try {
           const result = await importProviderDocuments({
+            onProgress,
             supabase,
             companyId,
             userId: ctx.userId,
@@ -2354,6 +2410,7 @@ export const arcimMigrationExtension: Extension = {
             log.warn('arcim import-documents could not refresh the connection', { code: error.code, cursor })
             return providerFailureResponse(error, 'PROVIDER_IMPORT_DOCUMENTS_FAILED')
           }
+
           // "400 Bad Request" alone told us nothing when a live Fortnox
           // discovery failed (2026-08-20): keep status, Fortnox's own
           // message and a body excerpt in the log, and hand the message
@@ -2387,6 +2444,18 @@ export const arcimMigrationExtension: Extension = {
             },
           })
         }
+
+        }
+        if (progress && !dryRun) return streamDocumentImport(async onProgress => {
+          const response = await execute(onProgress)
+          if (!response.ok) throw Object.assign(new Error('Document import failed'),{response})
+          const body = await response.json()
+          return body.result
+        }, error => error && typeof error === 'object' && 'response' in error
+          ? (error as {response:Response}).response
+          : errorResponseFromCode('PROVIDER_IMPORT_DOCUMENTS_FAILED',moduleLog))
+        return execute()
+
       },
     },
 

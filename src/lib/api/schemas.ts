@@ -142,7 +142,8 @@ export const SIEJobOptionsSchema = z.object({
   onlyUsedAccounts: z.boolean().optional(),
   // 'append' adds only the file's vouchers the year's import does not hold,
   // as their own batch (issue #108, lib/import/sie-append.ts).
-  onExistingPeriod: z.enum(['block','replace','append']).default('block'),
+  onExistingPeriod: z.enum(['block','replace','append','incremental']).default('block'),
+
   supersedesImportId: z.string().uuid().optional(),
   // Append only: also book the vouchers that match a posted entry's date and
   // lines but carry no matching source number (skipped by default).
@@ -2227,6 +2228,7 @@ export const SupplierInvoiceExistsQuerySchema = z
     path: ['number'],
     message: 'number or reference is required',
   })
+
 
 export const MarkSupplierInvoicePaidSchema = z.object({
   amount: z.number().positive().optional(),

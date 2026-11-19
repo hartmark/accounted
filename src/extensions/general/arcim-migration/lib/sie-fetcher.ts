@@ -11,6 +11,8 @@
  * and /sie-data (the years the user ticked).
  */
 
+import { withExecutionDeadline } from '@/lib/http/execution-budget'
+import { BokioClient, BokioApiError } from '@/lib/providers/bokio/client'
 import { FortnoxClient } from '@/lib/providers/fortnox/client'
 import { BrioxClient } from '@/lib/providers/briox/client'
 import { BjornLundenClient } from '@/lib/providers/bjornlunden/client'
@@ -74,30 +76,15 @@ export function classifySieFetchFailure(
  * Derived at call time (not a module constant) so the window rolls forward
  * automatically at new year without a code change.
  */
+
 export function getAllowedFiscalYears(now: Date = new Date()): Set<number> {
   const currentYear = stockholmYearMonth(now).year
   return new Set([currentYear - 2, currentYear - 1, currentYear])
 }
-
-/**
- * The most fiscal years one import run may select. The bound is the single
- * /sie-data invocation that fetches and parses one SIE export per selected
- * year: hosted function limit 300 s; one export call is 15 s per attempt
- * (FETCH_TIMEOUT_MS in lib/providers/fortnox/client.ts), 3 attempts with
- * 1 s and 2 s backoff between them (lib/providers/retry.ts defaults, capped
- * at 30 s), so a year that times out on every attempt costs 15 + 1 + 15 +
- * 2 + 15 = 48 s. Six such years are 288 s, which leaves the remaining 12 s
- * for the /financialyears listing, parsing and the response. Older years
- * beyond the cap go in a second run. Enforced server-side in /sie-data and
- * mirrored by the preview step's picker (which reads it from /preview).
- */
+/** Legacy batch-size hint. The server now bounds export time, not the user's year selection. */
 export const MAX_SELECTED_FISCAL_YEARS = 6
 
-/**
- * Thrown by fetchProviderSieFiles when an explicit selection names a year
- * the source does not have: raised right after the year listing, before any
- * SIE export is fetched, so an unknown year never costs a provider export.
- */
+/** Requested start years must exist at the source, checked before any export. */
 export class FiscalYearSelectionError extends Error {
   constructor(public readonly unknownYears: number[]) {
     super(`Fiscal years not found at the provider: ${unknownYears.join(', ')}`)
@@ -117,11 +104,13 @@ export interface ProviderSieFetchResult {
    * export failed is in `failedYears` instead. (An `availableYears` list of
    * the attempted years used to sit beside this; /preview labelled its
    * counts with it, failed years included, crm#1037.)
+
    */
+  availableYears?: number[]
   files: ProviderSieFile[]
   /**
    * Every fiscal year the source has, oldest first, with the provider's own
-   * bounds and whether it is in the default selection. The preview step
+   * bounds and whether it is preselected (all years). The preview step
    * renders these as the year picker, so no year can be left out silently.
    */
   sourceYears: SourceFiscalYear[]
@@ -152,11 +141,12 @@ export interface SourceFiscalYear {
   year: number
   fromDate: string | null
   toDate: string | null
-  /** True when the year falls in the default selection (getAllowedFiscalYears). */
+  /** All source years are preselected unless the caller chooses a subset. */
   inDefaultSelection: boolean
 }
 
 // Singleton clients (they hold rate limiters)
+const bokioClient = new BokioClient()
 const fortnoxClient = new FortnoxClient()
 const brioxClient = new BrioxClient()
 const bjornLundenClient = new BjornLundenClient()
@@ -170,7 +160,7 @@ const wintClient = new WintClient()
  * from a provider export and goes through the same parse/validate/import path.
  */
 export function providerSupportsSie(provider: ProviderName): boolean {
-  return provider === 'fortnox' || provider === 'briox' || provider === 'bjornlunden' || provider === 'wint'
+  return provider === 'bokio' || provider === 'fortnox' || provider === 'briox' || provider === 'bjornlunden' || provider === 'wint'
 }
 
 interface FiscalYearRef {
@@ -184,7 +174,7 @@ interface FiscalYearRef {
 /**
  * Fetch SIE type-4 exports from the provider, one file per selected fiscal
  * year (oldest first). The selection is `opts.years` (start years, as the
- * preview step's picker sends them) or, when absent, the default window.
+ * preview step's picker sends them) or, when absent, every available year.
  * Years whose export fails do not block the rest of the migration, but they
  * are reported in `failedYears` so the caller can warn the user before
  * importing a gap (IB/UB continuity). Years at the source outside the
@@ -201,8 +191,7 @@ export async function fetchProviderSieFiles(
     throw new Error(`Provider ${provider} does not support SIE over API`)
   }
 
-  const defaultFiscalYears = getAllowedFiscalYears()
-  const selectedFiscalYears = opts?.years ? new Set(opts.years) : defaultFiscalYears
+  const selectedFiscalYears = opts?.years ? new Set(opts.years) : null
   const byYear = (a: FiscalYearRef, b: FiscalYearRef) =>
     a.year - b.year || (a.fromDate ?? '').localeCompare(b.fromDate ?? '')
   const allYears = (await fetcher.listYears(accessToken)).sort(byYear)
@@ -213,8 +202,9 @@ export async function fetchProviderSieFiles(
     const unknownYears = opts.years.filter((y) => !known.has(y))
     if (unknownYears.length > 0) throw new FiscalYearSelectionError(unknownYears)
   }
-  const allowedYears = allYears.filter((fy) => selectedFiscalYears.has(fy.year))
+  const allowedYears = allYears.filter((fy) => !selectedFiscalYears || selectedFiscalYears.has(fy.year))
 
+  const availableYears = allowedYears.map(year => year.year)
   const toFetch = opts?.latestOnly ? allowedYears.slice(-1) : allowedYears
 
   // Both derived from the year list already fetched: naming every source
@@ -223,16 +213,19 @@ export async function fetchProviderSieFiles(
     year: fy.year,
     fromDate: fy.fromDate ?? null,
     toDate: fy.toDate ?? null,
-    inDefaultSelection: defaultFiscalYears.has(fy.year),
+    inDefaultSelection: true,
   })
   const sourceYears = allYears.map(describe)
-  const omittedYears = allYears.filter((fy) => !selectedFiscalYears.has(fy.year)).map(describe)
+  const omittedYears = allYears.filter((fy) => selectedFiscalYears && !selectedFiscalYears.has(fy.year)).map(describe)
 
   const files: ProviderSieFile[] = []
   const failedYears: ProviderSieFetchResult['failedYears'] = []
+  const deniedBokioExports: BokioApiError[] = []
+  const deadline = Date.now() + 240_000
+
   for (const fy of toFetch) {
     try {
-      const rawContent = await fetcher.fetchSie(accessToken, fy)
+      const rawContent = await withExecutionDeadline(deadline, 'provider-sie-export', () => fetcher.fetchSie(accessToken, fy))
       if (rawContent) {
         files.push({ fiscalYear: fy.year, rawContent })
       } else {
@@ -248,6 +241,8 @@ export async function fetchProviderSieFiles(
       // just came back on this token, so the grant is proven: a 403 on the
       // export is the provider closing the ledger, not a dead connection.
       const failure = classifySieFetchFailure(err, { grantProven: true })
+      if (provider === 'bokio' && err instanceof BokioApiError && err.statusCode === 403) deniedBokioExports.push(err)
+
       log.warn(`Failed to fetch SIE for ${provider} fiscal year ${fy.year} (id ${fy.id})`, {
         reason: message,
         code: failure.code,
@@ -256,7 +251,14 @@ export async function fetchProviderSieFiles(
     }
   }
 
-  return { files, sourceYears, failedYears, omittedYears }
+  // A working year listing does not imply permission to download SIE.
+  // Keep partial exports usable, but do not present an all-denied run as empty.
+  if (deniedBokioExports.length > 0 && deniedBokioExports.length === toFetch.length) {
+    throw deniedBokioExports[0]
+  }
+
+  return { files, availableYears, sourceYears, failedYears, omittedYears }
+
 }
 
 interface SieFetcher {
@@ -269,6 +271,40 @@ function getSieFetcher(
   providerCompanyId: string | undefined,
   selectedYears?: number[],
 ): SieFetcher | null {
+  if (provider === 'bokio') {
+    if (!providerCompanyId) throw new Error('Bokio SIE export requires a company id')
+    const companyId = providerCompanyId
+    return {
+      async listYears(accessToken) {
+        const years: FiscalYearRef[] = []
+        let page = 1
+        let totalPages = 1
+        do {
+          const result = await bokioClient.getPage<{
+            id: string; startDate: string; endDate: string
+          }>(accessToken, companyId, '/fiscal-years', { page, pageSize: 100 })
+          for (const fy of result.items) {
+            years.push({
+              id: fy.id,
+              year: new Date(fy.startDate).getUTCFullYear(),
+              fromDate: fy.startDate,
+              toDate: fy.endDate,
+            })
+          }
+          totalPages = result.totalPages
+          page += 1
+        } while (page <= totalPages)
+        return years
+      },
+      async fetchSie(accessToken, fy) {
+        const { bytes } = await bokioClient.getBytes(
+          accessToken, companyId, `/sie/${fy.id}/download`,
+        )
+        return decodeBuffer(bytes, detectEncoding(bytes))
+      },
+    }
+  }
+
   if (provider === 'fortnox') {
     return {
       async listYears(accessToken) {
@@ -342,7 +378,7 @@ function getSieFetcher(
         const rawYears = (company['FinancialYears'] as Record<string, unknown>[] | undefined) ?? []
         // The same selection fetchProviderSieFiles applies: the explicit
         // years when given, else the default window.
-        const allowed = selectedYears ? new Set(selectedYears) : getAllowedFiscalYears()
+        const allowed = selectedYears ? new Set(selectedYears) : null
         const allYears = rawYears
           .map((fy) => ({
             id: Number(fy['Id']),
@@ -351,7 +387,7 @@ function getSieFetcher(
             end: ((fy['End'] as string) ?? '').slice(0, 10),
           }))
           .sort((a, b) => a.year - b.year)
-        const years = allYears.filter((fy) => allowed.has(fy.year))
+        const years = allYears.filter((fy) => !allowed || allowed.has(fy.year))
 
         const accountsRaw = await wintClient.getPaginated<Record<string, unknown>>(
           accessToken,

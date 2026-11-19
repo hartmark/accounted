@@ -125,8 +125,10 @@ async function fetchSieData(ctx: ExtensionContext) {
   const { status, body } = await parseJsonResponse<{
     mappings: AccountMapping[]
     accounts: SIEAccount[]
-    fileStatuses: { fiscalYear: number; storagePath: string; filename: string }[]
+    parsed: {accounts:{number:string;name:string}[]}
+    fileStatuses: { fiscalYear: number; storagePath: string; filename: string; fiscalYearStart:string|null; fiscalYearEnd:string|null }[]
   }>(res)
+
   expect(status).toBe(200)
   return body
 }
@@ -243,4 +245,13 @@ describe('#63: only the accounts the files use', () => {
     expect(imported.status).toBe(202)
     expect((submitSIEJob as Mock).mock.calls[0][5]).toMatchObject({ onlyUsedAccounts: true })
   })
+})
+
+it('returns exact source period bounds for pre-import recovery', async () => {
+  const data = await fetchSieData(buildCtx([]))
+  expect(data.fileStatuses).toEqual([
+    expect.objectContaining({ fiscalYear: 2025, fiscalYearStart: '2025-01-01', fiscalYearEnd: '2025-12-31' }),
+    expect.objectContaining({ fiscalYear: 2026, fiscalYearStart: '2026-01-01', fiscalYearEnd: '2026-12-31' }),
+  ])
+
 })

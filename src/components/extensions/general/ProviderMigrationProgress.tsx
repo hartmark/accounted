@@ -1,5 +1,6 @@
 'use client'
 
+import MigrationSkippedRecords from './MigrationSkippedRecords'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslations } from 'next-intl'
 import { Button } from '@/components/ui/button'
@@ -90,11 +91,14 @@ export default function ProviderMigrationProgress({ jobId, onResult, onReconnect
           <Progress value={migrationProgress(status)} className="h-1" />
         </>}
         <ul className="space-y-2 text-sm">
-          {status.counts.map(row => <li key={row.resource} className="flex flex-wrap justify-between gap-2">
+          {status.counts.map(row => <li key={row.resource} className="space-y-2">
+            <div className="flex flex-wrap justify-between gap-2">
             <span>{t(`ext_arcim_job_resource_${row.resource}`)}</span>
             <span className="tabular-nums text-muted-foreground">{t('ext_arcim_job_counts', {
               imported: row.imported, total: row.total, pending: row.pending, failed: row.needs_attention,
             })}{row.skipped > 0 && `, ${t('ext_arcim_job_counts_skipped', { skipped: row.skipped })}`}</span>
+            </div>
+            <MigrationSkippedRecords status={status} resource={row.resource} />
           </li>)}
         </ul>
         {migrationRefusals(status.job).map(group => <div key={group.messageKey} className="space-y-1 text-sm">

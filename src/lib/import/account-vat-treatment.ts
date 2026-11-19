@@ -328,6 +328,14 @@ export function enrichAccountMappingsWithVat(
     if (ruledOutByRcBasisPair(mapping, mapping.providerVatTreatment, finding)) {
       return withoutRcMomskod(mapping, existing?.default_vat_rate ?? null)
     }
+    // A completed import remembers an explicit BAS-standard answer even
+    // though the chart stores it as null. A current chart override still wins.
+    if (mapping.vatTreatmentReviewed && mapping.requiresVatTreatmentReview
+      && mapping.defaultVatTreatment === null && !mapping.providerVatTreatment) {
+      return mapping
+    }
+
+
     if (mapping.providerVatTreatment) {
       return {
         ...mapping,
