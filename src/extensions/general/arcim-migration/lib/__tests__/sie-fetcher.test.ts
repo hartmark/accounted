@@ -1,3 +1,4 @@
+import { BokioClient } from '@/lib/providers/bokio/client'
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import {
   providerSupportsSie,
@@ -75,13 +76,7 @@ describe('getAllowedFiscalYears (the default selection)', () => {
   })
 })
 
-describe('MAX_SELECTED_FISCAL_YEARS', () => {
-  it('is six: 6 years x 48 s worst case (3 x 15 s timeout + 1 s + 2 s backoff) = 288 s inside the 300 s function', () => {
-    expect(MAX_SELECTED_FISCAL_YEARS).toBe(6)
-    expect(MAX_SELECTED_FISCAL_YEARS * (3 * 15 + 1 + 2)).toBeLessThan(300)
-    expect((MAX_SELECTED_FISCAL_YEARS + 1) * (3 * 15 + 1 + 2)).toBeGreaterThan(300)
-  })
-})
+describe('MAX_SELECTED_FISCAL_YEARS',()=>{it('bounds one request while allowing more than six years',()=>{expect(MAX_SELECTED_FISCAL_YEARS).toBe(32)})})
 
 describe('providerSupportsSie', () => {
   it('is true for providers with SIE-over-API, false otherwise', () => {
@@ -112,6 +107,28 @@ describe('fetchProviderSieFiles', () => {
   })
 
   describe('bokio', () => {
+    it('bounds the default batch and explicitly lists years left for the next request',async()=>{
+      const years=Array.from({length:33},(_,i)=>CY-32+i)
+      routeFetch(fetchSpy,[{match:'/fiscal-years',respond:()=>jsonResponse({items:years.map(year=>({id:`fy-${year}`,startDate:`${year}-01-01`,endDate:`${year}-12-31`})),currentPage:1,totalPages:1,totalItems:33})},{match:'/sie/',respond:()=>new Response('#FLAGGA 0\n',{status:200})}])
+      const download=vi.spyOn(BokioClient.prototype,'getBytes').mockResolvedValue({bytes:new TextEncoder().encode('#FLAGGA 0\n').buffer,contentType:'text/plain'})
+      let result
+      try {result=await fetchProviderSieFiles('bokio','token','company-1')}finally{download.mockRestore()}
+      expect(result.files).toHaveLength(32)
+      expect(result.omittedYears.map(row=>row.year)).toEqual([CY])
+      expect(result.sourceYears.filter(row=>row.inDefaultSelection)).toHaveLength(32)
+    })
+    it('rejects oversized explicit selections before contacting the provider',async()=>{
+      await expect(fetchProviderSieFiles('bokio','token','company-1',{years:Array.from({length:33},(_,i)=>CY-i)})).rejects.toThrow(/years limit/)
+      expect(fetchSpy).not.toHaveBeenCalled()
+    })
+    it('refuses a batch when completed export bytes exceed the request limit',async()=>{
+      routeFetch(fetchSpy,[{match:'/fiscal-years',respond:()=>jsonResponse({items:[2025,2026].map(year=>({id:`fy-${year}`,startDate:`${year}-01-01`,endDate:`${year}-12-31`})),currentPage:1,totalPages:1,totalItems:2})}])
+      const content='#FLAGGA 0\n'
+      const download=vi.spyOn(BokioClient.prototype,'getBytes').mockResolvedValue({bytes:new TextEncoder().encode(content).buffer,contentType:'text/plain'})
+      const realLength=Buffer.byteLength
+      const length=vi.spyOn(Buffer,'byteLength').mockImplementation((value,encoding)=>value===content ? 33*1024*1024 : realLength(value,encoding))
+      try {await expect(fetchProviderSieFiles('bokio','token','company-1')).rejects.toThrow(/bytes limit/)}finally{length.mockRestore();download.mockRestore()}
+    })
     it('fetches all nine source years by default and preserves an explicit subset', async () => {
       const years=Array.from({length:9},(_,i)=>CY-8+i)
       routeFetch(fetchSpy,[

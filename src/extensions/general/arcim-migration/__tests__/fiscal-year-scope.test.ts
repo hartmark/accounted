@@ -1,3 +1,4 @@
+vi.mock('@/lib/auth/require-write',()=>({requireWritePermission:vi.fn().mockResolvedValue({ok:true})}))
 import { describe, it, expect, beforeEach, afterEach, vi, type Mock } from 'vitest'
 import { createMockSupabase, createMockRequest, parseJsonResponse } from '@/tests/helpers'
 import type { ExtensionContext } from '@/lib/extensions/types'
@@ -47,7 +48,7 @@ vi.mock('../lib/sie-fetcher', () => ({
       super(`unknown ${unknownYears.join(', ')}`)
     }
   },
-  MAX_SELECTED_FISCAL_YEARS: 6,
+  MAX_SELECTED_FISCAL_YEARS: 32,
 }))
 
 // The Fortnox asset preview would otherwise go to the network.
@@ -237,12 +238,12 @@ describe('GET /preview: every source year, with the default selection marked (#2
     expect(body.sieStats.fiscalYears).toEqual([CY])
   })
 
-  it('does not impose a year-count cap on the picker', async () => {
+  it('advertises the server batch limit in the picker', async () => {
 
     const res = await handler('/preview')(request('/preview'), buildCtx())
     const { body } = await parseJsonResponse<{ maxSelectedYears: number }>(res)
 
-    expect(body.maxSelectedYears).toBeNull()
+    expect(body.maxSelectedYears).toBe(32)
   })
 
   it('still lists the source years when nothing inside the default selection came back', async () => {

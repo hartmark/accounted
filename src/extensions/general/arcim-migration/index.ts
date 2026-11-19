@@ -1,3 +1,6 @@
+import { requireWritePermission } from '@/lib/auth/require-write'
+import { checkExecutionBudget, ExecutionBudgetExceeded, ResponseByteLimitExceeded, withExecutionDeadline } from '@/lib/http/execution-budget'
+import { SIE_REQUEST_LIMITS, SieRequestLimitError } from './lib/sie-request-limits'
 import { streamDocumentImport } from './lib/document-import-progress'
 import { documentReviewRoutes } from './lib/document-review-routes'
 import { planSIEResync, type SIEResyncPlan } from '@/lib/import/sie-resync'
@@ -1146,7 +1149,9 @@ export const arcimMigrationExtension: Extension = {
     {
       method: 'GET',
       path: '/preview',
-      handler: async (request: Request, ctx: ExtensionContext) => {
+      handler: async (request: Request, ctx: ExtensionContext) => withExecutionDeadline(Date.now() + SIE_REQUEST_LIMITS.durationMs, 'provider-sie-preview', async () => {
+        const permission = await requireWritePermission(ctx.supabase,ctx.userId,{companyId:ctx.companyId})
+        if (!permission.ok) return permission.response
         const log = ctx.log
         const supabase = ctx.supabase
 
@@ -1226,7 +1231,7 @@ export const arcimMigrationExtension: Extension = {
               )
               sourceYears = source
               if (files.length > 0) {
-                const merged = mergeParsedSIEFiles(files.map((f) => parseSIEFile(f.rawContent)))
+                const merged = mergeParsedSIEFiles(files.map((f) => parseProviderSIE(f.rawContent)))
                 sieAvailable = true
                 sieStats = {
                   accountCount: merged.accounts.length,
@@ -1250,10 +1255,12 @@ export const arcimMigrationExtension: Extension = {
                 )
               }
             } catch (err) {
+              if (err instanceof ExecutionBudgetExceeded || err instanceof ResponseByteLimitExceeded) throw err
               // The year list itself failed. A company card that came back
               // above proves the token answers, so a 403 here is the provider
               // closing the ledger, not a dead grant: the migration
               // orchestrator reads its company step the same way.
+              if (err instanceof SieRequestLimitError) return sieRequestLimitResponse(err)
               sieError = classifySieFetchFailure(err, { grantProven: mapped !== null })
               log.info(`SIE export failed (${sieError.code}):`, err instanceof Error ? err.message : String(err))
               const denied = bokioSiePermissionResponse(err)
@@ -1304,7 +1311,7 @@ export const arcimMigrationExtension: Extension = {
             sourceYears,
             // The picker enforces the same cap as /sie-data, read from here
             // rather than duplicated in the client.
-            maxSelectedYears: null,
+            maxSelectedYears: MAX_SELECTED_FISCAL_YEARS,
             // Start years of the completed imports, oldest first: the picker
             // skips them when the source has more years than one run takes.
             importedFiscalYears,
@@ -1314,6 +1321,9 @@ export const arcimMigrationExtension: Extension = {
           })
         } catch (error) {
           log.error('arcim preview failed', error as Error)
+          if (error instanceof ExecutionBudgetExceeded) return errorResponseFromCode('TRANSIENT_ERROR', moduleLog)
+          if (error instanceof ResponseByteLimitExceeded) return sieRequestLimitResponse(new SieRequestLimitError('bytes', error.limit))
+          if (error instanceof SieRequestLimitError) return sieRequestLimitResponse(error)
           // Consent missing or owned by another company: same 404 either way.
           if (error instanceof ConsentNotFoundError) {
             return errorResponseFromCode('PROVIDER_CONSENT_NOT_FOUND', moduleLog, {
@@ -1324,7 +1334,7 @@ export const arcimMigrationExtension: Extension = {
           // reconnect / retry instead of a generic "preview failed".
           return providerFailureResponse(error, 'PROVIDER_PREVIEW_FAILED')
         }
-      },
+      },{ response: SIE_REQUEST_LIMITS.fileBytes, total: SIE_REQUEST_LIMITS.bytes }),
     },
 
     // ── Fetch + parse SIE data for mapping step ───────────────────
@@ -1332,6 +1342,9 @@ export const arcimMigrationExtension: Extension = {
       method: 'GET',
       path: '/sie-data',
       handler: async (request: Request, ctx: ExtensionContext) => {
+        const permission = await requireWritePermission(ctx.supabase,ctx.userId,{companyId:ctx.companyId})
+        if (!permission.ok) return permission.response
+        return withExecutionDeadline(Date.now() + SIE_REQUEST_LIMITS.durationMs, 'provider-sie-data', async () => {
         const log = ctx.log
         const supabase = ctx.supabase
 
@@ -1360,6 +1373,7 @@ export const arcimMigrationExtension: Extension = {
             })
           }
           requestedYears = [...new Set(parsed)].sort((a, b) => a - b)
+          if(requestedYears.length > MAX_SELECTED_FISCAL_YEARS)return sieRequestLimitResponse(new SieRequestLimitError('years',MAX_SELECTED_FISCAL_YEARS))
 
 
         }
@@ -1397,6 +1411,7 @@ export const arcimMigrationExtension: Extension = {
             }
             throw err
           }
+          checkExecutionBudget()
           const { files: sieFiles, failedYears, omittedYears } = fetched
 
           if (sieFiles.length === 0) {
@@ -1415,7 +1430,7 @@ export const arcimMigrationExtension: Extension = {
           // preview and the returned `parsed` all read from these parses.
           const parsedFiles = sieFiles.map((file) => ({
             file,
-            parsed: parseSIEFile(file.rawContent),
+            parsed: parseProviderSIE(file.rawContent),
           }))
 
           // Validate the most recent file's parse: unchanged behavior, so no
@@ -1464,6 +1479,7 @@ export const arcimMigrationExtension: Extension = {
           // such an account was impossible to map onto. See
           // ./lib/mapping-targets.
           const mappingTargets = await buildMappingTargets(supabase, companyId, moduleLog)
+          checkExecutionBudget()
           // The same decision the file upload makes, over the whole dataset
           // (#3312). A class 9 account with amounts in any selected year goes
           // to 2999; without this a stored 9xxx mapping, the chart's own 9xxx
@@ -1482,6 +1498,7 @@ export const arcimMigrationExtension: Extension = {
           try {
             const sourceAccounts = await fetchAccountingAccountsDirect(provider, resolved.accessToken)
             const codesByAccount = new Map<string, string>()
+            checkExecutionBudget()
             for (const account of sourceAccounts) {
               if (account.vatCode) codesByAccount.set(account.accountNumber, account.vatCode)
             }
@@ -1496,6 +1513,7 @@ export const arcimMigrationExtension: Extension = {
 
           mappings = await rememberCompletedVatReviews(supabase, companyId, mappings)
 
+          checkExecutionBudget()
           const mappingStats = getMappingStats(mappings)
 
           log.info(`Account mapping: ${allAccounts.length} unique accounts across ${sieFiles.length} files, ${mappingStats.unmapped} unmapped`)
@@ -1540,6 +1558,7 @@ export const arcimMigrationExtension: Extension = {
               fiscalYearEnd: string | null
             } | null
           }[] = []
+          checkExecutionBudget()
           for (const [index, { file, parsed: fileParsed }] of parsedFiles.entries()) {
             const fyStart = fileParsed.stats.fiscalYearStart
             const fyEnd = fileParsed.stats.fiscalYearEnd
@@ -1565,6 +1584,7 @@ export const arcimMigrationExtension: Extension = {
               priorImport = overlapping[0] ?? null
             }
 
+            checkExecutionBudget()
             fileStatuses.push({
               fiscalYear: file.fiscalYear,
               storagePath: archived[index].path,
@@ -1588,7 +1608,8 @@ export const arcimMigrationExtension: Extension = {
 
           const replacedFileCount = fileStatuses.filter(f => f.previousImport).length
 
-          return NextResponse.json({
+          checkExecutionBudget()
+          const serialized = JSON.stringify({
             // The merged dataset's accounts and its theater, built here: the
             // whole parse (every voucher of every year) is as large as the
             // files and stays on the server with them. The theater must see
@@ -1629,7 +1650,13 @@ export const arcimMigrationExtension: Extension = {
             omittedYears,
             basAccounts: mappingTargets,
           })
+          checkExecutionBudget()
+          if (Buffer.byteLength(serialized, 'utf8') > SIE_REQUEST_LIMITS.bytes) throw new SieRequestLimitError('bytes', SIE_REQUEST_LIMITS.bytes)
+          return new NextResponse(serialized, { headers: { 'Content-Type': 'application/json' } })
         } catch (error) {
+          if (error instanceof ExecutionBudgetExceeded)return errorResponseFromCode('TRANSIENT_ERROR',moduleLog,{requestId:ctx.requestId})
+          if (error instanceof ResponseByteLimitExceeded) return sieRequestLimitResponse(new SieRequestLimitError('bytes', error.limit))
+          if (error instanceof SieRequestLimitError) return sieRequestLimitResponse(error)
           // A file the archive refuses (over 50 MB) names itself.
           if (error instanceof SIEJobValidationError) return sieJobValidationResponse(error, moduleLog, ctx?.requestId)
           log.error('arcim sie-data fetch failed', error as Error)
@@ -1643,6 +1670,7 @@ export const arcimMigrationExtension: Extension = {
 
           return providerFailureResponse(error, 'PROVIDER_SIE_FETCH_FAILED')
         }
+        },{ response: SIE_REQUEST_LIMITS.fileBytes, total: SIE_REQUEST_LIMITS.bytes })
       },
     },
 
@@ -2543,4 +2571,25 @@ export const arcimMigrationExtension: Extension = {
   ],
 
   eventHandlers: [],
+}
+
+/** The picker can split years across requests; refusals never include provider payloads. */
+function sieRequestLimitResponse(error: SieRequestLimitError) {
+  return errorResponseFromCode('VALIDATION_ERROR', moduleLog, {
+    messageSv: error.field === 'years'
+      ? `Välj högst ${error.limit} räkenskapsår per omgång. Importera övriga år i nästa omgång.`
+      : 'SIE-filerna är för stora för en omgång. Välj färre år eller importera filen separat.',
+    messageEn: error.field === 'years'
+      ? `Select at most ${error.limit} fiscal years per batch. Import the remaining years in the next batch.`
+      : 'The SIE exports are too large for one batch. Select fewer years or import the file separately.',
+    details: { field: error.field, limit: error.limit },
+  })
+}
+
+/** Synchronous parsing is bounded by file size; checkpoints cover both sides of that work. */
+function parseProviderSIE(rawContent: string) {
+  checkExecutionBudget()
+  const parsed = parseSIEFile(rawContent)
+  checkExecutionBudget()
+  return parsed
 }

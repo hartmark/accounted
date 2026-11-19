@@ -1,3 +1,4 @@
+vi.mock('@/lib/auth/require-write',()=>({requireWritePermission:vi.fn().mockResolvedValue({ok:true})}))
 /**
  * Tests for the CP1252-mojibake tripwire on POST /import-sie.
  *

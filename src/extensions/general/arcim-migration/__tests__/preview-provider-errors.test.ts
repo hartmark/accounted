@@ -1,3 +1,4 @@
+vi.mock('@/lib/auth/require-write',()=>({requireWritePermission:vi.fn().mockResolvedValue({ok:true})}))
 import { BokioApiError } from '@/lib/providers/bokio/client'
 import { providerSupportsSie, fetchProviderSieFiles } from '../lib/sie-fetcher'
 import { describe, it, expect, beforeEach, vi, type Mock } from 'vitest'
@@ -48,7 +49,7 @@ vi.mock('../lib/sie-fetcher', () => ({
   fetchProviderSieFiles: vi.fn(),
   getAllowedFiscalYears: vi.fn().mockReturnValue([]),
   FiscalYearSelectionError: class FiscalYearSelectionError extends Error {},
-  MAX_SELECTED_FISCAL_YEARS: null,
+  MAX_SELECTED_FISCAL_YEARS: 32,
   classifySieFetchFailure: vi.fn().mockReturnValue({code:'PROVIDER_FETCH_FAILED'}),
 }))
 
