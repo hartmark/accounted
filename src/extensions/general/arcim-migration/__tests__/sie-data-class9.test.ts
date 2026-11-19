@@ -1,3 +1,6 @@
+import { requireWritePermission } from '@/lib/auth/require-write'
+import { SIE_REQUEST_LIMITS } from '../lib/sie-request-limits'
+vi.mock('@/lib/auth/require-write',()=>({requireWritePermission:vi.fn().mockResolvedValue({ok:true})}))
 /**
  * #3312: the onboarding provider step fetched FY2026 from Fortnox and the job
  * refused it every time with SIE_IMPORT_UNSUPPORTED_ACCOUNT_CLASS. FY2026
@@ -41,7 +44,7 @@ vi.mock('../lib/sie-fetcher', () => ({
   fetchProviderSieFiles: vi.fn(),
   getAllowedFiscalYears: vi.fn(),
   FiscalYearSelectionError: class FiscalYearSelectionError extends Error {},
-  MAX_SELECTED_FISCAL_YEARS: 6,
+  MAX_SELECTED_FISCAL_YEARS: 32,
 }))
 
 vi.mock('../lib/import-assets', () => ({ fetchFortnoxAssetPreview: vi.fn().mockResolvedValue(null) }))
@@ -204,4 +207,27 @@ it('returns exact source period bounds for pre-import recovery', async () => {
     expect.objectContaining({ fiscalYear: 2025, fiscalYearStart: '2025-01-01', fiscalYearEnd: '2025-12-31' }),
     expect.objectContaining({ fiscalYear: 2026, fiscalYearStart: '2026-01-01', fiscalYearEnd: '2026-12-31' }),
   ])
+})
+
+it.each(['/sie-data','/preview'])('refuses a viewer before provider access on %s',async path=>{
+ vi.mocked(requireWritePermission).mockResolvedValueOnce({ok:false,response:new Response('{}',{status:403})} as never)
+ const response=await route('GET',path)(createMockRequest('http://localhost'+path,{searchParams:{consentId:'consent-1'}}),buildCtx([]))
+ expect(response.status).toBe(403)
+ expect(resolveConsent).not.toHaveBeenCalled()
+ expect(fetchProviderSieFiles).not.toHaveBeenCalled()
+})
+it('refuses oversized explicit year selections before consent or export lookup',async()=>{
+ const response=await sieData(createMockRequest('http://localhost/sie-data',{searchParams:{consentId:'consent-1',years:Array.from({length:33},(_,i)=>2000+i).join(',')}}),buildCtx([]))
+ expect(response.status).toBe(400)
+ expect(resolveConsent).not.toHaveBeenCalled()
+})
+it('stops after a mapping-target lookup exhausts the request-wide budget',async()=>{
+ const start=Date.now()
+ const clock=vi.spyOn(Date,'now').mockReturnValue(start)
+ vi.mocked(buildMappingTargets).mockImplementationOnce(async()=>{clock.mockReturnValue(start+SIE_REQUEST_LIMITS.durationMs+1);return []})
+ try {
+  const response=await sieData(createMockRequest('http://localhost/sie-data',{searchParams:{consentId:'consent-1',years:'2025,2026'}}),buildCtx([]))
+  expect(response.status).toBe(503)
+  expect(fetchAccountingAccountsDirect).not.toHaveBeenCalled()
+ }finally{clock.mockRestore()}
 })

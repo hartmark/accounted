@@ -1,3 +1,4 @@
+vi.mock('@/lib/auth/require-write',()=>({requireWritePermission:vi.fn().mockResolvedValue({ok:true})}))
 import { describe, it, expect, beforeEach, afterEach, vi, type Mock } from 'vitest'
 import { createMockSupabase, createMockRequest, parseJsonResponse } from '@/tests/helpers'
 import type { ExtensionContext } from '@/lib/extensions/types'

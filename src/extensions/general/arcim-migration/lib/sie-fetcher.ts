@@ -10,7 +10,8 @@
  * Shared by /preview (latest year, for stats) and /sie-data (all years).
  */
 
-import { withExecutionDeadline } from '@/lib/http/execution-budget'
+import { SIE_REQUEST_LIMITS, SieRequestLimitError } from './sie-request-limits'
+import { checkExecutionBudget, ExecutionBudgetExceeded, ResponseByteLimitExceeded, withExecutionDeadline } from '@/lib/http/execution-budget'
 import { BokioClient, BokioApiError } from '@/lib/providers/bokio/client'
 import { FortnoxClient } from '@/lib/providers/fortnox/client'
 import { BrioxClient } from '@/lib/providers/briox/client'
@@ -35,8 +36,8 @@ export function getAllowedFiscalYears(now: Date = new Date()): Set<number> {
   const currentYear = now.getFullYear()
   return new Set([currentYear - 2, currentYear - 1, currentYear])
 }
-/** Legacy batch-size hint. The server now bounds export time, not the user's year selection. */
-export const MAX_SELECTED_FISCAL_YEARS = 6
+/** Maximum fiscal years in one request; older history remains available in later batches. */
+export const MAX_SELECTED_FISCAL_YEARS = SIE_REQUEST_LIMITS.years
 
 /** Requested start years must exist at the source, checked before any export. */
 export class FiscalYearSelectionError extends Error {
@@ -91,7 +92,7 @@ export interface SourceFiscalYear {
   year: number
   fromDate: string | null
   toDate: string | null
-  /** All source years are preselected unless the caller chooses a subset. */
+  /** Whether this year belongs to the bounded default batch. */
   inDefaultSelection: boolean
 }
 
@@ -124,7 +125,7 @@ interface FiscalYearRef {
 /**
  * Fetch SIE type-4 exports from the provider, one file per selected fiscal
  * year (oldest first). The selection is `opts.years` (start years, as the
- * preview step's picker sends them) or, when absent, every available year.
+ * preview step's picker sends them) or, when absent, the oldest bounded batch of available years.
  * Years whose export fails do not block the rest of the migration, but they
  * are reported in `failedYears` so the caller can warn the user before
  * importing a gap (IB/UB continuity). Years at the source outside the
@@ -136,6 +137,8 @@ export async function fetchProviderSieFiles(
   providerCompanyId: string | undefined,
   opts?: { latestOnly?: boolean; years?: number[] },
 ): Promise<ProviderSieFetchResult> {
+  checkExecutionBudget()
+  if(opts?.years && new Set(opts.years).size > MAX_SELECTED_FISCAL_YEARS)throw new SieRequestLimitError('years',MAX_SELECTED_FISCAL_YEARS)
   const fetcher = getSieFetcher(provider, providerCompanyId, opts?.years)
   if (!fetcher) {
     throw new Error(`Provider ${provider} does not support SIE over API`)
@@ -152,7 +155,10 @@ export async function fetchProviderSieFiles(
     const unknownYears = opts.years.filter((y) => !known.has(y))
     if (unknownYears.length > 0) throw new FiscalYearSelectionError(unknownYears)
   }
-  const allowedYears = allYears.filter((fy) => !selectedFiscalYears || selectedFiscalYears.has(fy.year))
+  checkExecutionBudget()
+  const defaultYears=new Set(allYears.slice(0, MAX_SELECTED_FISCAL_YEARS).map(fy => fy.year))
+  const selection=selectedFiscalYears ?? defaultYears
+  const allowedYears=allYears.filter(fy => selection.has(fy.year))
 
   const availableYears = allowedYears.map((fy) => fy.year)
   const toFetch = opts?.latestOnly ? allowedYears.slice(-1) : allowedYears
@@ -163,24 +169,31 @@ export async function fetchProviderSieFiles(
     year: fy.year,
     fromDate: fy.fromDate ?? null,
     toDate: fy.toDate ?? null,
-    inDefaultSelection: true,
+    inDefaultSelection: defaultYears.has(fy.year),
   })
   const sourceYears = allYears.map(describe)
-  const omittedYears = allYears.filter((fy) => selectedFiscalYears && !selectedFiscalYears.has(fy.year)).map(describe)
+  const omittedYears = allYears.filter((fy) => !selection.has(fy.year)).map(describe)
 
   const files: ProviderSieFile[] = []
   const failedYears: { year: number; error: string }[] = []
   const deniedBokioExports: BokioApiError[] = []
-  const deadline = Date.now() + 240_000
+  const deadline = Date.now() + SIE_REQUEST_LIMITS.durationMs
+  let totalBytes = 0
   for (const fy of toFetch) {
     try {
       const rawContent = await withExecutionDeadline(deadline, 'provider-sie-export', () => fetcher.fetchSie(accessToken, fy))
+      checkExecutionBudget()
       if (rawContent) {
+        const bytes = Buffer.byteLength(rawContent, 'utf8')
+        totalBytes += bytes
+        if (bytes > SIE_REQUEST_LIMITS.fileBytes) throw new SieRequestLimitError('bytes', SIE_REQUEST_LIMITS.fileBytes)
+        if (totalBytes > SIE_REQUEST_LIMITS.bytes) throw new SieRequestLimitError('bytes', SIE_REQUEST_LIMITS.bytes)
         files.push({ fiscalYear: fy.year, rawContent })
       } else {
         failedYears.push({ year: fy.year, error: 'Provider returned an empty SIE export' })
       }
     } catch (err) {
+      if (err instanceof SieRequestLimitError || err instanceof ExecutionBudgetExceeded || err instanceof ResponseByteLimitExceeded) throw err
       if (provider === 'bokio' && err instanceof BokioApiError && err.statusCode === 403) {
         deniedBokioExports.push(err)
       }

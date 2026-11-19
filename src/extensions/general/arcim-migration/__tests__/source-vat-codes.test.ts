@@ -1,3 +1,4 @@
+vi.mock('@/lib/auth/require-write',()=>({requireWritePermission:vi.fn().mockResolvedValue({ok:true})}))
 /**
  * Issue #2585: a Fortnox user saw the mapping step propose momskoder that
  * differed from the ones on their own kontoplan. The SIE export the guided
@@ -46,7 +47,7 @@ vi.mock('../lib/sie-fetcher', () => ({
       super(`unknown ${unknownYears.join(', ')}`)
     }
   },
-  MAX_SELECTED_FISCAL_YEARS: 6,
+  MAX_SELECTED_FISCAL_YEARS: 32,
 }))
 
 vi.mock('../lib/import-assets', () => ({
