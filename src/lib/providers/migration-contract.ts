@@ -56,16 +56,26 @@ export interface MigrationResourceCounts {
   credit_notes_linked?: number
 }
 
+export interface MigrationFieldDifference {
+  field: string
+  source: string | number | boolean | null
+  accounted: string | number | boolean | null
+  line?: number
+  currency?: string
+}
+
 export interface ProviderMigrationStatus {
+  skipped?: { id: string; resource: MigrationResource; source_id: string; reason: string;
+    invoiceNumber?: string; partyName?: string; invoiceDate?: string; amount?: number; currency?: string; targetId?: string | null }[]
   paymentsAwaitingDueDate?: PendingImportPayables
   job: ProviderMigrationJob
   counts: MigrationResourceCounts[]
-  changes?: {id:string;resource:MigrationResource;source_id:string;targetId:string;label:string;kind:'new'|'changed'}[]
+  changes?: {id:string;resource:MigrationResource;source_id:string;targetId:string;label:string;kind:'new'|'changed'; differences?: MigrationFieldDifference[]; comparisonUnavailable?: boolean}[]
   issues: { id: string; resource: MigrationResource; source_id: string; error_code: string;
     invoiceNumber?: string; invoiceDate?: string; amount?: number; currency?: string;
     /** Supplier or customer name, the label when the source invoice has no number of its own. */
     partyName?: string;
-    targetId?: string | null; errorPhase?: string | null }[]
+    targetId?: string | null; errorPhase?: string | null; differences?: MigrationFieldDifference[]; comparisonUnavailable?: boolean }[]
 }
 
 export function migrationProgress(status: ProviderMigrationStatus): number {

@@ -263,3 +263,21 @@ it('refuses unknown or incomplete year scope before creating work',async()=>{
   for(const years of [[2018],[2026]])expect((await route('POST')(request({consentId:id,resources:['supplierInvoices'],years}),ctx)).status).toBe(400)
   expect(serviceRpc).not.toHaveBeenCalled()
 })
+
+
+it('lists each excluded invoice and its recorded reason without exposing its source payload', async () => {
+  const db = createQueuedMockSupabase()
+  const payload = sealMigrationPayload({invoiceNumber:'216',issueDate:'2022-09-30',currencyCode:'SEK',
+    customer:{name:'Example customer'},legalMonetaryTotal:{payableAmount:{value:180000}}}).payload
+  db.enqueueMany([{data:{id,company_id:'company',phase:'discover'}},{data:[{resource:'salesInvoices',skipped:1}]},{data:[]},{data:[]},
+    {data:[{id:'skip-1',resource:'salesInvoices',source_id:'source-216',target_id:null,payload,receipt:{reason:'historical_receivable'}}]}])
+  const ctx = {supabase:db.supabase,companyId:'company',userId:'user'} as unknown as ExtensionContext
+  const response = await route('GET')(new Request(`http://localhost/jobs?jobId=${id}`),ctx)
+  const body = await response.json()
+  expect(body.data.skipped).toEqual([{id:'skip-1',resource:'salesInvoices',source_id:'source-216',targetId:null,
+    invoiceNumber:'216',partyName:'Example customer',invoiceDate:'2022-09-30',amount:180000,currency:'SEK',reason:'historical_receivable'}])
+  expect(JSON.stringify(body)).not.toContain(payload)
+  expect(db.findCalls('migration_job_chunks','eq')).toContainEqual(['company_id','company'])
+  expect(db.findCalls('migration_job_chunks','eq')).toContainEqual(['job_id',id])
+  expect(db.findCalls('migration_job_chunks','eq')).toContainEqual(['state','skipped'])
+})

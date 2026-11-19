@@ -1,6 +1,7 @@
 'use client'
 
 import Link from 'next/link'
+import MigrationDifferenceTable from './MigrationDifferenceTable'
 import { formatCurrency } from '@/lib/utils'
 import HistoricalReceivableFindings from './HistoricalReceivableFindings'
 import { ConfirmationDialog } from '@/components/ui/confirmation-dialog'
@@ -101,11 +102,20 @@ export default function ProviderMigrationProgress({ jobId, onResult, onReconnect
         <p className="text-sm">{t(`ext_arcim_job_phase_${status.job.phase}`)}</p>
         <Progress value={migrationProgress(status)} className="h-1" />
         <ul className="space-y-2 text-sm">
-          {status.counts.map(row => <li key={row.resource} className="flex flex-wrap justify-between gap-2">
-            <span>{t(`ext_arcim_job_resource_${row.resource}`)}</span>
+          {status.counts.map(row => <li key={row.resource} className="space-y-2">
+            <div className="flex flex-wrap justify-between gap-2"><span>{t(`ext_arcim_job_resource_${row.resource}`)}</span>
             <span className="tabular-nums text-muted-foreground">{t((row.unchanged ?? 0) > 0 ? 'ext_arcim_job_delta_counts' : 'ext_arcim_job_counts', {
               imported: row.imported, unchanged:row.unchanged ?? 0, total: row.total, skipped: row.skipped ?? 0, pending: row.pending, failed: row.needs_attention,
-            })}</span>
+            })}</span></div>
+            {(row.skipped ?? 0) > 0 && <details>
+              <summary className="cursor-pointer underline">{t('ext_arcim_job_show_skipped',{count:row.skipped})}</summary>
+              <ul className="mt-3 space-y-3">{status.skipped?.filter(item => item.resource === row.resource).map(item => <li key={item.id} className="space-y-1" data-ph-mask="">
+                <p>{[item.partyName,item.invoiceNumber].filter(Boolean).join(' ') || item.source_id}
+                  {item.invoiceDate && ` · ${item.invoiceDate}`}{item.amount !== undefined && ` · ${formatCurrency(item.amount,item.currency)}`}</p>
+                <p className="text-muted-foreground">{t.has(`ext_arcim_job_skip_${item.reason}`) ? t(`ext_arcim_job_skip_${item.reason}`) : t('ext_arcim_job_skip_unknown')}</p>
+                {item.targetId && ['salesInvoices','supplierInvoices'].includes(item.resource) && <Link className="underline" href={`/${item.resource === 'salesInvoices' ? 'invoices' : 'supplier-invoices'}/${item.targetId}`}>{t('ext_arcim_job_open_invoice')}</Link>}
+              </li>)}</ul>
+            </details>}
           </li>)}
         </ul>
       </>}
@@ -115,9 +125,12 @@ export default function ProviderMigrationProgress({ jobId, onResult, onReconnect
         <h3 className="font-medium">{t('ext_arcim_job_changes')}</h3>
         <ul className="space-y-2 text-sm">{status.changes.map(change => <li key={change.id} data-ph-mask="">
           {t(change.kind==='new' ? 'ext_arcim_job_change_new' : 'ext_arcim_job_change_changed')}{' · '}
-          {['salesInvoices','supplierInvoices'].includes(change.resource)
+          {change.kind === 'changed' && status.issues.some(issue => issue.id === change.id)
+            ? <a className="underline" href={`#migration-issue-${change.id}`}>{change.label}</a>
+            : ['salesInvoices','supplierInvoices'].includes(change.resource)
             ? <Link className="underline" href={`/${change.resource==='salesInvoices' ? 'invoices' : 'supplier-invoices'}/${change.targetId}`}>{change.label}</Link>
             : change.label}
+          {change.kind === 'changed' && !status.issues.some(issue => issue.id === change.id) && <MigrationDifferenceTable resource={change.resource} differences={change.differences} unavailable={change.comparisonUnavailable} />}
         </li>)}</ul>
       </section>}
       {status?.job.state === 'completed' && <Button onClick={() => onResultRef.current(status)}>{t('ext_arcim_historical_results')}</Button>}
@@ -128,12 +141,13 @@ export default function ProviderMigrationProgress({ jobId, onResult, onReconnect
         {status?.issues.length ? <div className="space-y-3">
           <h3 className="font-medium">{t('ext_arcim_job_issues_title')}</h3>
           <ul className="space-y-4 text-sm">
-            {status.issues.slice(0, 10).map(issue => <li key={issue.id} className="space-y-2 border-b border-border pb-4">
+            {status.issues.slice(0, 10).map(issue => <li key={issue.id} id={`migration-issue-${issue.id}`} className="space-y-2 border-b border-border pb-4">
               <p className="font-medium" data-ph-mask="">{t(`ext_arcim_job_resource_${issue.resource}`)}: {[issue.partyName, issue.invoiceNumber].filter(Boolean).join(' ') || issue.source_id}
                 {issue.invoiceDate && ` · ${issue.invoiceDate}`}
                 {issue.amount !== undefined && ` · ${formatCurrency(issue.amount, issue.currency)}`}
               </p>
               <p>{t(`ext_arcim_job_error_${migrationIssueKind(issue.error_code)}`)}</p>
+              {issue.error_code === 'MIGRATION_SOURCE_CHANGED' && <MigrationDifferenceTable resource={issue.resource} differences={issue.differences} unavailable={issue.comparisonUnavailable} />}
               {issue.targetId && ['salesInvoices', 'supplierInvoices'].includes(issue.resource) &&
                 <Link className="underline" href={`/${issue.resource === 'salesInvoices' ? 'invoices' : 'supplier-invoices'}/${issue.targetId}`}>
                   {t('ext_arcim_job_open_invoice')}
