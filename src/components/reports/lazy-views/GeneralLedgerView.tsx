@@ -167,7 +167,7 @@ export default function GeneralLedgerView({ periodId, initialAccountFilter, dime
 
   if (!data || data.accounts.length === 0) {
     return (
-      <div><Button variant="outline" onClick={()=>setHideInactive(!hideInactive)}>{hideInactive ? "Visa inaktiva konton" : "Dölj inaktiva konton"}</Button><ReportEmptyState
+      <div><Button variant="outline" onClick={()=>setHideInactive(!hideInactive)}>{hideInactive ? t('show_inactive_accounts') : t('hide_inactive_accounts')}</Button><ReportEmptyState
         title="Inga verifikationer i perioden"
         description="Det finns inga bokförda verifikationer i den valda perioden."
       /></div>
@@ -207,7 +207,7 @@ export default function GeneralLedgerView({ periodId, initialAccountFilter, dime
         <Button onClick={applyAccountRange} variant="outline">
           Filtrera
         </Button>
-        <Button variant="outline" aria-pressed={!hideInactive} onClick={()=>setHideInactive(!hideInactive)}>{hideInactive ? "Visa inaktiva konton" : "Dölj inaktiva konton"}</Button>
+        <Button variant="outline" aria-pressed={!hideInactive} onClick={()=>setHideInactive(!hideInactive)}>{hideInactive ? t('show_inactive_accounts') : t('hide_inactive_accounts')}</Button>
       </div>
 
       {data.period.start && (

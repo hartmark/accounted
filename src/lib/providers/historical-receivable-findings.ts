@@ -1,3 +1,4 @@
+import { isLedgerCurrency } from '@/lib/bookkeeping/currency-utils'
 import { ISO_DATE_RE } from '@/lib/invariants/iso-date'
 import { ORE_TOLERANCE, roundOre } from '@/lib/money'
 import type { SalesInvoiceDto } from './dto'
@@ -62,7 +63,7 @@ export function findHistoricalReceivableCandidates(
     // A normal invoice, credit, unsettled claim or explicit booking reference
     // must never be silently downgraded to historical payment-only metadata.
     if (source.imported || !source.reviewable || dto.lines.length || !dto.paymentStatus.paid || dto.status !== 'paid'
-      || dto.invoiceTypeCode || dto.currencyCode !== 'SEK' || dto._raw?.journalEntryRef
+      || dto.invoiceTypeCode || !isLedgerCurrency(dto.currencyCode) || dto._raw?.journalEntryRef
       || normalize(dto.customer.name) !== normalize(ref.customer) || !ISO_DATE_RE.test(dto.issueDate) || dto.issueDate > entry.date
       || !Number.isFinite(dto.paymentStatus.balance.value) || !Number.isFinite(dto.legalMonetaryTotal.payableAmount.value)
       || Math.abs(dto.paymentStatus.balance.value) > ORE_TOLERANCE

@@ -9192,7 +9192,11 @@
     "delete_warning_entry": "Verifikat {voucher} raderas permanent. Denna åtgärd kan inte ångras.",
     "delete_dialog_draft_body": "Utkastet och dess kontorader tas bort. Kopplade fakturor och transaktioner påverkas inte: de stannar kvar som obokförda. Underlag (kvitton, dokument) behålls men avlänkas.",
     "delete_dialog_entry_body": "Verifikatet och dess kontorader tas bort. Kopplade transaktioner och fakturor behåller sina uppgifter men markeras som ej bokförda. Underlag (kvitton, dokument) behålls men avlänkas.",
-    "company_required": "Välj ett företag eller ladda om sidan innan du öppnar verifikatet."
+    "company_required": "Välj ett företag eller ladda om sidan innan du öppnar verifikatet.",
+    "dimension_edit": "Ändra dimensioner",
+    "dimension_edit_hint": "Ändra dimensioner (påverkar endast internredovisningen)",
+    "corrected_label": "Rättad",
+    "dimension_history": "Ändringshistorik för dimensioner"
   },
   "journal_form": {
     "consequence_creates_voucher": "Skapar verifikat {voucher}",
@@ -15207,7 +15211,9 @@
     "closing_balance": "UB: {amount} kr",
     "load_more": "Visa fler ({shown, number} av {total, number})",
     "loading_lines": "Hämtar rader…",
-    "lines_failed": "Kunde inte hämta raderna"
+    "lines_failed": "Kunde inte hämta raderna",
+    "show_inactive_accounts": "Visa inaktiva konton",
+    "hide_inactive_accounts": "Dölj inaktiva konton"
   },
   "journal_register": {
     "load_more": "Visa fler ({shown, number} av {total, number})",

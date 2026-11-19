@@ -2,7 +2,7 @@ import 'server-only'
 
 import { z } from 'zod'
 import { getDashboardAuthContext, getDashboardCompanyId } from '../../request-context'
-import { getJournalEntryDetail } from '@/lib/core/bookkeeping/journal-entry-detail'
+import { getJournalEntryDetail } from '@/lib/bookkeeping/journal-entry-detail'
 import { createLogger } from '@/lib/logger'
 
 const log = createLogger('bookkeeping.journal_entry.initial')

@@ -60,17 +60,16 @@ BEGIN
   ASSERT (SELECT supplier_invoice_number='AG-77' AND payment_reference IS NULL FROM supplier_invoices WHERE id=jan),
     'the first invoice lost its number';
 
-  -- 2. Another month: stored without a number, the reference as its
-  -- payment_reference, named in the receipt.
+  -- 2. Another month keeps the repeated supplier reference and its own identity.
   rec:=jsonb_build_object('id',ch_feb,'party_source_id','sup-1','party',party,
     'row',base||jsonb_build_object('invoice_date','2026-02-28','due_date','2026-03-28'),'items','[]'::jsonb,
     'warnings',jsonb_build_object('fxUnresolved',false));
   PERFORM commit_provider_migration_records(j.id,worker,j.attempt,jsonb_build_array(rec));
   ASSERT (SELECT state='imported' AND error_code IS NULL AND (receipt->>'imported')::boolean
-    AND (receipt->'warnings'->>'numberAsPaymentReference')::boolean AND receipt->'warnings'->>'fxUnresolved'='false'
+    AND receipt->'warnings'->>'fxUnresolved'='false'
     FROM migration_job_chunks WHERE id=ch_feb),'a reused reference on another date was not imported';
   SELECT target_id INTO feb FROM migration_job_chunks WHERE id=ch_feb;
-  ASSERT (SELECT supplier_invoice_number IS NULL AND payment_reference='AG-77' AND supplier_id=supplier
+  ASSERT (SELECT supplier_invoice_number='AG-77' AND payment_reference IS NULL AND supplier_id=supplier
     AND arrival_number IS NOT NULL AND invoice_date='2026-02-28' FROM supplier_invoices WHERE id=feb),
     'the reused reference was not kept as payment_reference';
 
@@ -79,34 +78,31 @@ BEGIN
     'row',base||jsonb_build_object('invoice_date','2026-03-28','due_date','2026-04-28'),'items','[]'::jsonb);
   PERFORM commit_provider_migration_records(j.id,worker,j.attempt,jsonb_build_array(rec));
   SELECT target_id INTO mar FROM migration_job_chunks WHERE id=ch_mar;
-  ASSERT (SELECT supplier_invoice_number IS NULL AND payment_reference='AG-77' FROM supplier_invoices WHERE id=mar)
+  ASSERT (SELECT supplier_invoice_number='AG-77' AND payment_reference IS NULL FROM supplier_invoices WHERE id=mar)
     AND mar<>feb,'the third month was not stored as its own invoice';
 
-  -- 4. The same reference and date as the first invoice, another amount:
-  -- still a duplicate refusal.
+  -- 4. A distinct source record with a different amount remains a distinct invoice.
   rec:=jsonb_build_object('id',ch_jan_dup,'party_source_id','sup-1','party',party,
     'row',base||jsonb_build_object('total',451,'total_sek',451,'subtotal',451,'subtotal_sek',451,'remaining_amount',451),
     'items','[]'::jsonb);
   PERFORM commit_provider_migration_records(j.id,worker,j.attempt,jsonb_build_array(rec));
-  ASSERT (SELECT state='needs_attention' AND error_code='MIGRATION_INVOICE_NUMBER_TAKEN' FROM migration_job_chunks
+  ASSERT (SELECT state='imported' AND error_code IS NULL FROM migration_job_chunks
     WHERE id=ch_jan_dup),'the same number and date was stored';
 
-  -- 5. The same reference and date as an invoice stored without the number:
-  -- also a refusal.
+  -- 5. Another distinct header also keeps the supplier reference.
   rec:=jsonb_build_object('id',ch_feb_dup,'party_source_id','sup-1','party',party,
     'row',base||jsonb_build_object('invoice_date','2026-02-28','due_date','2026-03-28','total',451,'total_sek',451,
       'subtotal',451,'subtotal_sek',451,'remaining_amount',451),'items','[]'::jsonb);
   PERFORM commit_provider_migration_records(j.id,worker,j.attempt,jsonb_build_array(rec));
-  ASSERT (SELECT state='needs_attention' AND error_code='MIGRATION_INVOICE_NUMBER_TAKEN' FROM migration_job_chunks
+  ASSERT (SELECT state='imported' AND error_code IS NULL FROM migration_job_chunks
     WHERE id=ch_feb_dup),'the same reference and date as a moved invoice was stored';
 
-  -- 6. Another date, but the record carries its own payment reference: storing
-  -- both is not possible, so it stays a refusal.
+  -- 6. A separate OCR payment reference is retained alongside the printed invoice reference.
   rec:=jsonb_build_object('id',ch_ocr,'party_source_id','sup-1','party',party,
     'row',base||jsonb_build_object('invoice_date','2026-04-28','due_date','2026-05-28','payment_reference','7350001234'),
     'items','[]'::jsonb);
   PERFORM commit_provider_migration_records(j.id,worker,j.attempt,jsonb_build_array(rec));
-  ASSERT (SELECT state='needs_attention' AND error_code='MIGRATION_INVOICE_NUMBER_TAKEN' FROM migration_job_chunks
+  ASSERT (SELECT state='imported' AND error_code IS NULL FROM migration_job_chunks
     WHERE id=ch_ocr),'a record with its own payment reference lost one of them';
 
   -- 7. Another date with the reference already as its payment reference: stored.
@@ -117,7 +113,7 @@ BEGIN
   ASSERT (SELECT state='imported' FROM migration_job_chunks WHERE id=ch_same_ref),
     'a record whose payment reference is the reused number was refused';
   SELECT count(*) INTO n FROM supplier_invoices WHERE company_id=company;
-  ASSERT n=4,'supplier invoices were duplicated or dropped';
+  ASSERT n=7,'supplier invoices were duplicated or dropped';
 
   -- 8. A run that has lost its source map adopts the moved invoice on its
   -- header instead of storing it twice.
@@ -128,15 +124,11 @@ BEGIN
   ASSERT (SELECT state='imported' AND target_id=feb AND NOT (receipt->>'imported')::boolean
     FROM migration_job_chunks WHERE id=ch_feb_again),'the moved invoice was not adopted without its source map';
   SELECT count(*) INTO n FROM supplier_invoices WHERE company_id=company;
-  ASSERT n=4,'a re-run stored the moved invoice twice';
+  ASSERT n=7,'a re-run stored the moved invoice twice';
 
-  -- 9. The unique index still guards the real number.
-  BEGIN
-    PERFORM insert_provider_migration_row('supplier_invoices',base||jsonb_build_object('company_id',company,'user_id',u,
-      'supplier_id',supplier,'arrival_number',get_next_arrival_number(company),'invoice_date','2026-06-28'));
-    RAISE EXCEPTION 'TEST: a second live invoice with the number was stored';
-  EXCEPTION WHEN unique_violation THEN NULL;
-  END;
+  -- 9. Source identity and the full header guard adoption; repeated printed references remain intact.
+  ASSERT (SELECT supplier_invoice_number='AG-77' AND payment_reference='7350001234' FROM supplier_invoices
+    WHERE id=(SELECT target_id FROM migration_job_chunks WHERE id=ch_ocr)), 'OCR and supplier reference were not both retained';
 
   -- 10. The Bokio completion pass recognises the moved invoice as its source
   -- (dry run), and still refuses another source number.

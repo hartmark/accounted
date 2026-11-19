@@ -1,3 +1,4 @@
+import { formatVoucher } from '@/lib/bookkeeping/voucher-series-resolver'
 import { bokioAccountKey } from './bokio-source-identity'
 import { explainUnmatchedDocument, pageUnmatchedDocuments, type UnmatchedProviderDocument, type ProviderDocumentMatchReview } from '@/lib/providers/document-match-review'
 /**
@@ -995,7 +996,7 @@ export async function importProviderDocuments(
       rows.push({uploadId:attachment.id,fileName:attachment.fileName,voucher:ref ? `${ref.series}${ref.number}` : null,
         date:ref?.date ?? null,dateTo:ref?.dateTo ?? null,reason,candidateCount:candidates.length,
         candidates:candidates.slice().sort((a,b)=>a.entry_date.localeCompare(b.entry_date)||a.id.localeCompare(b.id)).slice(0,5).map(row=>({
-          id:row.id,label:row.voucher_series && row.voucher_number!=null ? `${row.voucher_series}${row.voucher_number}` : ref ? `${ref.series}${ref.number}` : '',
+          id:row.id,label:row.voucher_series && row.voucher_number!=null ? formatVoucher(row) : ref ? `${ref.series}${ref.number}` : '',
           date:row.entry_date,reversed:row.status==='reversed'||!!row.reversed_by_id}))})
     }
     result.unmatchedSamples = rows.slice(0,20).map(row=>({uploadId:row.uploadId,voucher:row.voucher ?? "(unresolved)",date:row.date ?? "",reason:row.reason === "date_mismatch" ? "date_mismatch" as const : "no_voucher_ref" as const}))

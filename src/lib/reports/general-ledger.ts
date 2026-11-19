@@ -346,6 +346,7 @@ export interface GeneralLedgerAccountPage {
 }
 
 interface LedgerScopeOptions {
+  includeInactive?:boolean
   dimensions?: Record<string, string>
   fromDate?: string
   toDate?: string

@@ -757,7 +757,7 @@ async function readDocumentImportProgress(response:Response,onProgress?: (result
   } catch(error) {
     if(error instanceof ArcimDocumentImportRequestError)throw error
     throw new ArcimDocumentImportRequestError({code:null,requestId:null,reconnectRequired:false})
-  } finally {await reader.cancel().catch(()=>{});reader.releaseLock()}
+  } finally {await reader.cancel().catch(()=>{ /* Cancellation is cleanup after the result or failure was already delivered. */ });reader.releaseLock()}
 }
 
 /** Far above any real list: a guard against a server that never completes. */

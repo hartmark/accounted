@@ -61,14 +61,14 @@ export function NavTreeSection({
       {!sub && Icon && (renderIcon ? renderIcon(entry, iconClass) : <Icon className={iconClass} />)}
       <span className="min-w-0 flex-1 truncate">{label(entry.labelKey, entry.labelNamespace)}</span>
       {entry.betaBadge ? (
-        <span className="ml-auto rounded-full bg-muted/60 px-1.5 py-0.5 text-[11px] uppercase tracking-wider text-muted-foreground/70">{betaLabel}</span>
+        <span className="ml-auto rounded-full bg-muted/60 px-1.5 py-0.5 text-[11px]  tracking-wider text-muted-foreground/70">{betaLabel}</span>
       ) : badge !== null && (
         <span data-ph-mask className="ml-auto flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-primary px-1 text-[11px] font-semibold text-primary-foreground">{badge > 99 ? '99+' : badge}</span>
       )}
     </>
     const className = cn(
       'group flex min-w-0 flex-1 items-center rounded-lg px-3 transition-colors duration-150',
-      sub ? 'py-[5px] text-[12.5px]' : 'min-h-10 py-[7px] text-[13px]',
+      sub ? 'py-[5px] text-sm' : 'min-h-10 py-[7px] text-[13px]',
       mobile && 'min-h-[44px] text-sm',
       enabled ? rowActive ? 'bg-secondary text-foreground font-medium' : 'text-muted-foreground hover:text-foreground hover:bg-secondary/60' : 'text-muted-foreground/40 cursor-not-allowed',
     )

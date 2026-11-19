@@ -608,7 +608,7 @@ export function CreditNoteEditor({ invoiceId }: { invoiceId: string }) {
                   )}
                 </tbody>
               </table></ResponsiveTable>
-              <p className="mt-3 text-[12.5px] text-muted-foreground">
+              <p className="mt-3 text-sm text-muted-foreground">
                 {t('rows_note', { number: originalNumber ?? '' })}
               </p>
 

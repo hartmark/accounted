@@ -1,3 +1,4 @@
+import { historicalReceiptLeg } from '@/lib/bookkeeping/account-roles/se-bas'
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import type { ExtensionContext, ApiRouteDefinition } from '@/lib/extensions/types'
@@ -54,8 +55,8 @@ export async function loadHistoricalReceivableFindings(ctx: ExtensionContext, jo
   const totals = new Map<string, { ar: number; bank: number }>()
   for (const line of lines) {
     const row = totals.get(line.journal_entry_id) ?? { ar: 0, bank: 0 }
-    if (line.account_number.startsWith('15')) row.ar += Number(line.credit_amount) - Number(line.debit_amount)
-    if (line.account_number.startsWith('19')) row.bank += Number(line.debit_amount) - Number(line.credit_amount)
+    if (historicalReceiptLeg(line.account_number) === 'receivable') row.ar += Number(line.credit_amount) - Number(line.debit_amount)
+    if (historicalReceiptLeg(line.account_number) === 'bank') row.bank += Number(line.debit_amount) - Number(line.credit_amount)
     totals.set(line.journal_entry_id, row)
   }
   const payments: HistoricalPaymentEntry[] = eligible.map(row => ({ id: row.id, date: row.entry_date,

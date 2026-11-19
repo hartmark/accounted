@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({ auth: vi.fn(), company: vi.fn(), detail: vi.fn() }))
 vi.mock('@/app/(dashboard)/request-context', () => ({ getDashboardAuthContext: mocks.auth, getDashboardCompanyId: mocks.company }))
-vi.mock('@/lib/core/bookkeeping/journal-entry-detail', () => ({ getJournalEntryDetail: mocks.detail }))
+vi.mock('@/lib/bookkeeping/journal-entry-detail', () => ({ getJournalEntryDetail: mocks.detail }))
 import { getInitialJournalEntryDetail } from '../initial-data'
 
 const id = 'dc066288-3938-48e7-99f1-a14ce4b7a2e7'

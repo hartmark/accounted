@@ -1,4 +1,5 @@
 'use client'
+import { isLedgerCurrency } from '@/lib/bookkeeping/currency-utils'
 
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useRouter } from 'next/navigation'
@@ -79,37 +80,7 @@ import { useReverseJournalEntry } from '@/components/bookkeeping/use-reverse-jou
 import type { SieDeleteBlock } from '@/lib/core/bookkeeping/voucher-delete-guard'
 import { DetailPageSkeleton } from '@/components/common/DetailPageSkeleton'
 
-// Snapshot of a struck line, as stored in journal_entry_rattelse_log.
-type StruckLineSnapshot = {
-  id: string
-  account_number: string
-  debit_amount: number | string
-  credit_amount: number | string
-  line_description: string | null
-  sort_order: number
-}
-
-type RattelseLogRow = {
-  id: string
-  rattelse_type: 'metadata' | 'lines'
-  old_description: string | null
-  new_description: string | null
-  old_entry_date: string | null
-  new_entry_date: string | null
-  struck_lines: StruckLineSnapshot[] | null
-  added_lines: StruckLineSnapshot[] | null
-  actor: string | null
-  // Resolved server-side from profiles (rattelse-log route); null when the
-  // actor is unknown or the lookup failed.
-  actor_label: string | null
-  created_at: string
-  // 'sie_import': correction history carried by the imported SIE file
-  // (#BTRANS/#RTRANS); the source system's signature stands in for the actor.
-  source?: 'user' | 'sie_import' | null
-  external_signature?: string | null
-}
-
-type PeriodStatus = 'open' | 'locked' | 'closed'
+import type { StruckLineSnapshot, RattelseLogRow, PeriodStatus } from '@/lib/bookkeeping/journal-entry-detail-types'
 
 // Ledger amounts render as plain sv-SE numbers with two decimals (no currency
 // suffix), the same way the verifikat list's line tables do.
@@ -282,7 +253,7 @@ export default function JournalEntryDetail({id,initialCompanyId,initialData}:{id
       .then(({ data }) => {
         if (data?.next != null) setCommitVoucherPreview(`${data.series}${data.next}`)
       })
-      .catch(() => {})
+      .catch(() => { /* The voucher preview is advisory; the commit endpoint assigns and validates the actual number. */ })
   }, [])
 
   // The commit meets the booking-time voucher warnings (useCommitDraft).
@@ -391,7 +362,7 @@ export default function JournalEntryDetail({id,initialCompanyId,initialData}:{id
 
   const totalDebit = lines.reduce((sum, l) => sum + (Number(l.debit_amount) || 0), 0)
 
-  const foreignLines = lines.filter(l => l.currency && l.currency !== 'SEK' && l.amount_in_currency != null)
+  const foreignLines = lines.filter(l => l.currency && !isLedgerCurrency(l.currency) && l.amount_in_currency != null)
   const hasForeignCurrency = foreignLines.length > 0
   // For the summary: use the first foreign line's data (the settlement line)
   const foreignCurrency = hasForeignCurrency ? foreignLines[0].currency! : null
@@ -501,8 +472,8 @@ export default function JournalEntryDetail({id,initialCompanyId,initialData}:{id
         type="button"
         onClick={() => setRetagLine(line as unknown as RetagLine)}
         className="rounded-sm p-1 text-muted-foreground transition-colors hover:bg-secondary/60 hover:text-foreground"
-        aria-label="Ändra dimensioner"
-        title="Ändra dimensioner (påverkar endast internredovisningen)"
+        aria-label={t('dimension_edit')}
+        title={t('dimension_edit_hint')}
       >
         <PencilIcon className="h-3 w-3" />
       </button>
@@ -576,7 +547,7 @@ export default function JournalEntryDetail({id,initialCompanyId,initialData}:{id
       <JournalEntryStatusBadge entry={entry} showStatus={entry.status !== 'posted'} />
       {rattelseLog.length > 0 && (
         <Badge variant="outline" title={t('rattelse_history_title')}>
-          Rättad
+          {t('corrected_label')}
         </Badge>
       )}
     </>
@@ -1075,7 +1046,7 @@ export default function JournalEntryDetail({id,initialCompanyId,initialData}:{id
           side shows the dimension's registry name and the code as logged:
           codes are what the trail recorded, names can change later. */}
       {dimensionsEnabled && retagLog.length > 0 && (
-        <DetailSection kicker="Ändringshistorik för dimensioner">
+        <DetailSection kicker="{t('dimension_history')}">
           <ul className="divide-y divide-border text-sm">
             {retagLog.map((row) => {
               const lineForRow = lines.find((l) => l.id === row.line_id)

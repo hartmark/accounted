@@ -3,14 +3,8 @@ import { fileURLToPath } from 'node:url'
 import { expect, it } from 'vitest'
 import { getClient } from './setup'
 
-/**
- * Covers 20261006184512_provider_migration_reused_supplier_number (crm#1039):
- * a supplier number reused on another invoice date imports without a number,
- * the reference kept as payment_reference; the same number and date stays a
- * refusal; a run without its source map adopts the moved invoice; the unique
- * index still guards real numbers; the Bokio completion pass recognises it.
- */
-it('imports a reused supplier number on another date as payment_reference and keeps refusing duplicates', async () => {
+/** Reused supplier references keep their printed value; source identity and full headers prevent duplicate adoption. */
+it('retains reused supplier references and OCR while adopting existing matching headers', async () => {
   const client = await getClient()
   try {
     const sql = readFileSync(

@@ -7,5 +7,5 @@ export function decodePageState<T>(raw: string | null, initial: T): T {
     if (saved === null) return initial === null ? saved : initial
     if (initial === null) return typeof saved === 'object' && !Array.isArray(saved) ? saved : initial
     return typeof saved === typeof initial && Array.isArray(saved) === Array.isArray(initial) ? saved : initial
-  } catch { return initial }
+  } catch { /* Invalid view preferences safely fall back to defaults. */ return initial }
 }

@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { withRouteContext } from '@/lib/api/with-route-context'
 import { errorResponseFromCode } from '@/lib/errors/get-structured-error'
-import { getJournalEntryDetail } from '@/lib/core/bookkeeping/journal-entry-detail'
+import { getJournalEntryDetail } from '@/lib/bookkeeping/journal-entry-detail'
 
 /** Read the voucher's initial view through one authenticated request. */
 export const GET = withRouteContext<{ params: Promise<{ id: string }> }>(

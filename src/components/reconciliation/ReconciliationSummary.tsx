@@ -73,7 +73,7 @@ export function ReconciliationSummary({
     <ResponsiveTable className="max-w-[760px] stagger-enter">
       <table className="w-full border-collapse text-[13px]">
         <thead>
-          <tr className="text-[11px] font-medium uppercase tracking-[0.07em] text-muted-foreground">
+          <tr className="text-[11px] font-medium  tracking-[0.07em] text-muted-foreground">
             <th className="w-full py-1.5 text-left font-medium"><span className="sr-only">{t('col_event')}</span></th>
 
             <th className={cn(NUM, 'font-medium')}>{externalHead}</th>

@@ -72,7 +72,7 @@ export function SegmentedControl<T extends string>({
               }}
               data-ph-unmask=""
               className={cn(
-                'inline-flex h-6 items-center pointer-coarse:min-h-10 sm:h-full gap-1.5 rounded-full px-3.5 text-[12.5px] transition-colors duration-150',
+                'inline-flex h-6 items-center pointer-coarse:min-h-10 sm:h-full gap-1.5 rounded-full px-3.5 text-sm transition-colors duration-150',
 
                 value === opt.value
                   ? 'bg-control text-strong shadow-raised'

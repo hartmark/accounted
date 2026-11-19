@@ -58,3 +58,8 @@ export const SE_BAS_ACCOUNT_ROLES: Readonly<Record<AccountRole, string>> = Objec
   /** 7324 Skattepliktiga traktamenten, utlandet. */
   foreign_per_diem_taxable: '7324',
 })
+
+/** Bokio historical receipt review: the Swedish short-term receivable and cash groups. */
+export function historicalReceiptLeg(account:string):'receivable'|'bank'|null {
+  return account.startsWith('15') ? 'receivable' : account.startsWith('19') ? 'bank' : null
+}

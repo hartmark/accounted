@@ -9192,7 +9192,11 @@
     "delete_warning_entry": "Journal entry {voucher} will be permanently deleted. This action cannot be undone.",
     "delete_dialog_draft_body": "The draft and its entry lines are removed. Linked invoices and transactions are not affected: they remain unposted. Documents (receipts, files) are kept but unlinked.",
     "delete_dialog_entry_body": "The journal entry and its lines are removed. Linked transactions and invoices keep their data but are marked as unposted. Documents (receipts, files) are kept but unlinked.",
-    "company_required": "Select a company or reload the page before opening the journal entry."
+    "company_required": "Select a company or reload the page before opening the journal entry.",
+    "dimension_edit": "Edit dimensions",
+    "dimension_edit_hint": "Edit dimensions (affects internal reporting only)",
+    "corrected_label": "Corrected",
+    "dimension_history": "Dimension change history"
   },
   "journal_form": {
     "consequence_creates_voucher": "Creates voucher {voucher}",
@@ -15207,7 +15211,9 @@
     "closing_balance": "Closing: {amount} SEK",
     "load_more": "Show more ({shown, number} of {total, number})",
     "loading_lines": "Loading lines…",
-    "lines_failed": "Could not load the lines"
+    "lines_failed": "Could not load the lines",
+    "show_inactive_accounts": "Show inactive accounts",
+    "hide_inactive_accounts": "Hide inactive accounts"
   },
   "journal_register": {
     "load_more": "Show more ({shown, number} of {total, number})",

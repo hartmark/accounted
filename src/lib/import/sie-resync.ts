@@ -1,3 +1,4 @@
+import { whereSieImportInPlace } from '@/lib/bookkeeping/sie-import-in-place'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { fetchAllRows } from '@/lib/supabase/fetch-all'
 import { mappingsToMap } from './account-mapper'
@@ -51,8 +52,8 @@ export async function planSIEResync(supabase: SupabaseClient, companyId: string,
     ({ from, to }) => supabase.from('journal_entries').select('id,source_voucher_series,source_voucher_number')
       .eq('company_id', companyId).eq('fiscal_period_id', periodId).eq('source_type', 'import').eq('status', 'posted')
       .is('reversed_by_id', null).order('id').range(from, to))
-  const { data: baseline, error: baselineError } = await supabase.from('sie_imports').select('*')
-    .eq('company_id', companyId).eq('fiscal_period_id', periodId).eq('status', 'completed')
+  const { data: baseline, error: baselineError } = await whereSieImportInPlace(supabase.from('sie_imports').select('*')
+    .eq('company_id', companyId).eq('fiscal_period_id', periodId))
     .neq('manifest->input->options->>onExistingPeriod', 'incremental').order('created_at', { ascending: false }).limit(1).maybeSingle()
   if (baselineError) throw new Error(baselineError.message)
   // An existing empty period is still a first import.
@@ -99,8 +100,8 @@ export async function planSIEResync(supabase: SupabaseClient, companyId: string,
   let metadataChanged = false
   if (baseline?.file_storage_path && baseline.job_state) {
     const original = parseSIEFile(await readSIEJobSource(supabase, baseline as SIEJob))
-    const {data:latest,error:latestError} = await supabase.from('sie_imports').select('*')
-      .eq('company_id',companyId).eq('fiscal_period_id',periodId).eq('status','completed')
+    const {data:latest,error:latestError} = await whereSieImportInPlace(supabase.from('sie_imports').select('*')
+      .eq('company_id',companyId).eq('fiscal_period_id',periodId))
       .order('created_at',{ascending:false}).limit(1).maybeSingle()
     if (latestError) throw new Error(latestError.message)
     const oldReferences = new Set(original.vouchers.filter(v=>v.series && !v.numberOmitted).map(v=>reference(v.series,v.number)))

@@ -11,7 +11,7 @@ export type StruckLineSnapshot = {
   sort_order: number
 }
 
-type RattelseLogRow = {
+export type RattelseLogRow = {
   id: string
   rattelse_type: 'metadata' | 'lines'
   old_description: string | null
@@ -31,7 +31,7 @@ type RattelseLogRow = {
   external_signature?: string | null
 }
 
-type PeriodStatus = 'open' | 'locked' | 'closed'
+export type PeriodStatus = 'open' | 'locked' | 'closed'
 
 export type JournalEntryDetailRead = {
   delete_block?: import('@/lib/core/bookkeeping/voucher-delete-guard').SieDeleteBlock | null

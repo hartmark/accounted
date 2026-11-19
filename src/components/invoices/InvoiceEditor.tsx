@@ -4421,7 +4421,7 @@ export default function InvoiceEditor(props: InvoiceEditorProps = { mode: 'creat
                 <div>
                   {/* Header row: offset by the drag-grip gutter (w-8). */}
                   <div className="responsive-form-header pl-8">
-                    <div className={cn(rowGridClass, 'border-b border-border pb-2 text-[11px] uppercase tracking-[0.08em] text-muted-foreground')}>
+                    <div className={cn(rowGridClass, 'border-b border-border pb-2 text-[11px] font-medium text-muted-foreground')}>
 
                       <div className="px-2">{t('description_label')}</div>
                       <div className="px-2 text-right">{t('quantity_label')}</div>
