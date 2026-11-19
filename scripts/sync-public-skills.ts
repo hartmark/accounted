@@ -56,7 +56,7 @@ export function skillSummary(description: string): string {
 }
 
 export interface ReadmeSkill { name: string; path: string; description: string }
-const skillRow = (skill: ReadmeSkill) => `| [\`${skill.name}\`](${skill.path}) | ${skillSummary(skill.description).replace(/\|/g, '\\|')} |`
+const skillRow = (skill: ReadmeSkill) => `| [\`${skill.name}\`](${skill.path}) | ${skillSummary(skill.description).replace(/\\/g, '\\\\').replace(/\|/g, '\\|')} |`
 
 /**
  * The mirror's README: what the skills are, one install line per way in, and every skill in a table.

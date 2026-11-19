@@ -1,4 +1,5 @@
 #!/usr/bin/env npx tsx
+import { escapeRegExp } from './lib/escape-regexp.mjs'
 /**
  * Generate the iXBRL taxonomy concept registries from the official taxonomy
  * material committed in docs/reference/bokslut/taxonomi/.
@@ -133,7 +134,7 @@ function decodeXml(text: string): string {
 }
 
 function attrOf(attrText: string, name: string): string | null {
-  const m = attrText.match(new RegExp(`(?:^|\\s)${name.replace(/[:.]/g, '\\$&')}="([^"]*)"`))
+  const m = attrText.match(new RegExp(`(?:^|\\s)${escapeRegExp(name)}="([^"]*)"`))
   return m ? m[1] : null
 }
 

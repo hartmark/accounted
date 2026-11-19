@@ -66,8 +66,11 @@ export const FORBIDDEN_CLIENT_IMPORTS = [...FORBIDDEN_IMPORTS, LAZY_INIT_MODULE]
 const APP_ENTRY_RE =
   /^(?:page|layout|template|default|loading|error|global-error|not-found|global-not-found|forbidden|unauthorized|route|sitemap|robots|manifest|icon|apple-icon|opengraph-image|twitter-image)\.(?:tsx?|jsx?)$/
 const ROOT_ENTRY_RE = /^(?:instrumentation|middleware|proxy)\.(?:tsx?|jsx?)$/
-const USE_SERVER_RE = /^(?:\s*(?:\/\/[^\n]*\n|\/\*[\s\S]*?\*\/))*\s*['"]use server['"]/
-const USE_CLIENT_RE = /^(?:\s*(?:\/\/[^\n]*\n|\/\*[\s\S]*?\*\/))*\s*['"]use client['"]/
+/** Read the first non-trivia token in linear time, including large comment prefixes. */
+function hasDirective(source, directive) {
+  const scanner = ts.createScanner(ts.ScriptTarget.Latest, true, ts.LanguageVariant.Standard, source)
+  return scanner.scan() === ts.SyntaxKind.StringLiteral && scanner.getTokenValue() === directive
+}
 const RESOLVE_SUFFIXES = ['', '.ts', '.tsx', '.mjs', '.js', '/index.ts', '/index.tsx']
 
 function isTestPath(rel) {
@@ -97,7 +100,7 @@ function findClientModules(sourceRoot) {
   return walkFiles(sourceRoot, (full, name) => {
     if (!/\.tsx?$/.test(name) || /\.test\.tsx?$/.test(name)) return false
     try {
-      return USE_CLIENT_RE.test(fs.readFileSync(full, 'utf8'))
+      return hasDirective(fs.readFileSync(full, 'utf8'), 'use client')
     } catch {
       return false
     }
@@ -108,7 +111,7 @@ function findServerActionModules(sourceRoot) {
   return walkFiles(sourceRoot, (full, name) => {
     if (!/\.tsx?$/.test(name) || /\.test\.tsx?$/.test(name)) return false
     try {
-      return USE_SERVER_RE.test(fs.readFileSync(full, 'utf8'))
+      return hasDirective(fs.readFileSync(full, 'utf8'), 'use server')
     } catch {
       return false
     }

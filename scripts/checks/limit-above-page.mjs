@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { escapeRegExp } from '../lib/escape-regexp.mjs'
 /**
  * Guard: a PostgREST read with `.limit(N)` where N is above one page.
  *
@@ -46,7 +47,7 @@ const LIMIT_OPTION_RE = /\b(?:p_)?limit\s*:\s*(\d[\d_]*)\s*(?=[,}\n)])/g
 const numberValue = (literal) => Number(literal.replace(/_/g, ''))
 
 function constantValue(source, name) {
-  const escaped = name.replace(/\$/g, '\\$')
+  const escaped = escapeRegExp(name)
   const m = source.match(new RegExp(String.raw`\bconst\s+${escaped}\s*(?::\s*number\s*)?=\s*(\d[\d_]*)\s*[;\n]`))
   return m ? numberValue(m[1]) : null
 }
