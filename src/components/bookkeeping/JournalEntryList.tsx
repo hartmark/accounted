@@ -443,9 +443,14 @@ export default function JournalEntryList({
     if (incomplete) toast({ title: t('rattelse_flags_failed'), variant: 'destructive' })
   }, [t, toast])
 
-  const fetchNoDocRequired = useCallback(async () => {
+  const fetchNoDocRequired = useCallback(async (ids:string[],isCurrent:()=>boolean) => {
     try {
-      const res = await fetch('/api/bookkeeping/no-doc-required')
+      if (!ids.length) {if(isCurrent())setNoDocRequired(new Map());return}
+      const pages = await Promise.all(Array.from({length:Math.ceil(ids.length/100)},(_,i)=>fetch('/api/bookkeeping/no-doc-required?journal_entry_ids='+ids.slice(i*100,i*100+100).join(','))))
+      if(pages.some(page=>!page.ok))return
+      const rows = (await Promise.all(pages.map(page=>page.json()))).flatMap(body=>body.data ?? [])
+      if(!isCurrent())return
+      const res = new Response(JSON.stringify({data:rows}))
       if (!res.ok) return
       const { data } = await res.json()
       const map = new Map<string, string | null>()
@@ -458,9 +463,6 @@ export default function JournalEntryList({
     }
   }, [])
 
-  useEffect(() => {
-    fetchNoDocRequired()
-  }, [fetchNoDocRequired])
 
   // Restore the persisted sort order (per company). Read in an effect rather
   // than the useState initializer to avoid an SSR/client hydration mismatch.
@@ -599,6 +601,7 @@ export default function JournalEntryList({
         return
       }
       setLoadFailed(false)
+      void fetchNoDocRequired(loadedEntries.map(entry=>entry.id),isCurrent)
       setEntries(loadedEntries)
       setCount(total || 0)
       setMissingCount(showMissingOnly && listMode === 'committed' ? total || 0 : null)

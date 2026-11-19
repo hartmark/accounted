@@ -37,6 +37,7 @@ const unitProject = {
       '**/*.sim.test.ts',
       '**/.claude/**',
       '**/.next/**',
+      '**/.e2e/**',
     ],
     setupFiles: ['tests/unit/setup.ts'],
   },
@@ -53,7 +54,7 @@ const pgRealProject = {
     include: ['**/*.pg.test.ts'],
     // `.next/standalone` holds a traced copy of these files after a local
     // build; 128 of them match this project's glob.
-    exclude: ['**/node_modules/**', '**/.claude/**', '**/.next/**'],
+    exclude: ['**/node_modules/**', '**/.claude/**', '**/.next/**', '**/.e2e/**'],
     // worker-database.ts first: it decides which database setup.ts opens.
     setupFiles: ['tests/pg/worker-database.ts', 'tests/pg/setup.ts'],
     globalSetup: ['tests/pg/global-setup.ts'],
@@ -64,6 +65,7 @@ const pgRealProject = {
     // Side by side every test waits longer for the server and the processor,
     // so the limits double: they are there to end a hang, not to time a test.
     ...(pgRealWorkers > 0 ? { maxWorkers: pgRealWorkers, testTimeout: 30000, hookTimeout: 20000 } : { testTimeout: 15000 }),
+
   },
 }
 
@@ -80,7 +82,7 @@ const toolPgProject = {
     include: ['**/*.tool.test.ts'],
     // See the unit project's note: `.next/standalone` is a build artifact that
     // would otherwise be collected as a second copy of this suite.
-    exclude: ['**/node_modules/**', '**/.claude/**', '**/.next/**'],
+    exclude: ['**/node_modules/**', '**/.claude/**', '**/.next/**', '**/.e2e/**'],
     setupFiles: ['tests/tool-pg/setup.ts'],
     // The suite shares one database; parallel files would race on seeded rows.
     fileParallelism: false,

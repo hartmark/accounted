@@ -8828,7 +8828,8 @@
     "gap_saved": "Explanation saved",
     "gap_forbidden": "Only owners and admins can explain gaps.",
     "gap_save_failed": "Couldn't save the explanation.",
-    "no_results_line": "No entries match your filters."
+    "no_results_line": "No entries match your filters.",
+    "no_doc_required_load_failed": "Could not load supporting-document information."
   },
   "attachment_preview_sheet": {
     "title": "Attachments",
@@ -9185,7 +9186,8 @@
     "delete_warning_draft": "The draft has never been posted and can be removed without affecting the voucher sequence. This action cannot be undone.",
     "delete_warning_entry": "Journal entry {voucher} will be permanently deleted. This action cannot be undone.",
     "delete_dialog_draft_body": "The draft and its entry lines are removed. Linked invoices and transactions are not affected: they remain unposted. Documents (receipts, files) are kept but unlinked.",
-    "delete_dialog_entry_body": "The journal entry and its lines are removed. Linked transactions and invoices keep their data but are marked as unposted. Documents (receipts, files) are kept but unlinked."
+    "delete_dialog_entry_body": "The journal entry and its lines are removed. Linked transactions and invoices keep their data but are marked as unposted. Documents (receipts, files) are kept but unlinked.",
+    "company_required": "Select a company or reload the page before opening the journal entry."
   },
   "journal_form": {
     "consequence_creates_voucher": "Creates voucher {voucher}",
@@ -9356,7 +9358,7 @@
     "prune_empty": "No unused accounts to clean up: your chart of accounts is already clean.",
     "prune_confirm": "Delete {count} accounts",
     "prune_select_all": "Select all unused accounts",
-    "select_all_aria": "Select all listed accounts",
+    "select_all_aria": "Select all matching accounts across the full chart, including accounts not yet loaded",
     "select_row_aria": "Select account {number}",
     "usage_filter_label": "Filter by vouchers",
     "usage_filter_all": "All accounts",
@@ -9364,7 +9366,7 @@
     "usage_filter_unused": "Without vouchers",
     "usage_filter_used": "With vouchers",
     "bulkbar_selected": "{count, plural, one {account selected} other {accounts selected}}",
-    "bulk_select_all": "Select all listed ({count})",
+    "bulk_select_all": "Select all matching ({count})",
     "bulk_clear_selection": "Clear selection",
     "bulk_deactivate_confirm_title": "Deactivate {count} accounts?",
     "bulk_deactivate_confirm": "{count} accounts without vouchers will be deactivated. Existing bookkeeping is unaffected, and the accounts can be reactivated from the BAS catalog.",
@@ -9470,7 +9472,8 @@
       "confidence_uncertain": "Uncertain"
     },
     "load_failed": "Could not load the chart of accounts",
-    "prune_load_failed": "Could not load the unused accounts"
+    "prune_load_failed": "Could not load the unused accounts",
+    "visible_accounts": "Showing {visible} of {total} accounts"
   },
   "finance_leases": {
     "title": "Finance leases",

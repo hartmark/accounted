@@ -1,5 +1,7 @@
 'use client'
 
+import { useAccounts } from '@/lib/reference-data/hooks'
+
 import { Fragment, useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import Link from 'next/link'
 import { useTranslations } from 'next-intl'
@@ -152,12 +154,11 @@ export default function ChartOfAccountsManager() {
   const [usageLoaded, setUsageLoaded] = useState(false)
 
   // Data state
-  const [accounts, setAccounts] = useState<BASAccount[]>([])
+  const {accounts,isLoading:loading,error:accountsError,refresh:fetchAccounts} = useAccounts(!showInactive)
+  const loadFailed = !!accountsError
   const [referenceAccounts, setReferenceAccounts] = useState<ReferenceAccount[]>([])
   const [usageCounts, setUsageCounts] = useState<Map<string, number>>(new Map())
-  const [loading, setLoading] = useState(true)
   // The user's chart could not load: said in the page with "Försök igen" (Stil v3 states).
-  const [loadFailed, setLoadFailed] = useState(false)
   // The BAS catalog + K2 default are fetched lazily the first time the user
   // opens that tab, so they never block the default "Mina konton" view.
   const [referenceLoaded, setReferenceLoaded] = useState(false)
@@ -177,60 +178,6 @@ export default function ChartOfAccountsManager() {
   // Data fetching
   // -------------------------------------------
 
-  // Read through a ref, not the state value: making fetchAccounts depend on
-  // showInactive would put it in the mount effect's dep list and re-run the
-  // whole blocking load on every toggle (the same double-fetch the comment
-  // below warns about for hideK2Excluded).
-  const showInactiveRef = useRef(showInactive)
-  showInactiveRef.current = showInactive
-
-  const fetchAccounts = useCallback(async () => {
-    // `?active=false` disables the filter entirely (active + inactive), it does
-    // not select inactive rows only - see list_company_accounts.
-    try {
-      const res = await fetch(
-        showInactiveRef.current ? '/api/bookkeeping/accounts?active=false' : '/api/bookkeeping/accounts',
-      )
-      if (!res.ok) {
-        setLoadFailed(true)
-        return
-      }
-      const { data } = await res.json()
-      setAccounts(data || [])
-      setLoadFailed(false)
-    } catch {
-      setLoadFailed(true)
-    }
-  }, [])
-
-  // The server sends only the company's per-account activation status; the BAS
-  // catalog is static and already bundled here, so we merge client-side rather
-  // than re-download ~1,300 catalog rows on every load.
-  const fetchReference = useCallback(async () => {
-    const res = await fetch('/api/bookkeeping/accounts/reference')
-    const { data } = await res.json()
-    const userMap = new Map<string, { account_number: string; is_active: boolean; is_system_account: boolean }>(
-      (data || []).map(
-        (a: { account_number: string; is_active: boolean; is_system_account: boolean }) => [a.account_number, a],
-      ),
-    )
-    // The full chart is a lazily loaded chunk: only the BAS-katalog tab pays
-    // for it, not every route that renders this component's parent.
-    const BAS_REFERENCE = await ensureBasLoaded()
-    const merged: ReferenceAccount[] = BAS_REFERENCE.map((ref) => {
-      const userAccount = userMap.get(ref.account_number)
-      return {
-        ...ref,
-        is_activated: !!userAccount,
-        is_active: userAccount?.is_active ?? false,
-        is_system_account: userAccount?.is_system_account ?? false,
-      }
-    })
-    setReferenceAccounts(merged)
-  }, [])
-
-  // Per-account posting counts - drives the "Verifikat" column. Non-fatal:
-  // the page works without it, cells just show a dash.
   const fetchUsage = useCallback(async () => {
     try {
       const res = await fetch('/api/bookkeeping/accounts/usage')
@@ -255,34 +202,8 @@ export default function ChartOfAccountsManager() {
   // background; the BAS catalog + K2 setting are deferred to tab open. This
   // must NOT depend on hideK2Excluded: doing so re-ran the whole load a second
   // time once the K2 default was set, doubling every fetch on each visit.
-  useEffect(() => {
-    let cancelled = false
-    async function load() {
-      setLoading(true)
-      await fetchAccounts()
-      if (!cancelled) setLoading(false)
-    }
-    load()
-    void fetchUsage()
-    return () => {
-      cancelled = true
-    }
-  }, [fetchAccounts, fetchUsage])
+  useEffect(() => { void fetchUsage() }, [fetchUsage])
 
-  // Refetch when the inactive filter flips. Skips the first run (the mount
-  // effect above already fetched) and deliberately does not raise `loading`:
-  // swapping a filter should not blank the table back to the skeleton.
-  const showInactiveInitial = useRef(true)
-  useEffect(() => {
-    if (showInactiveInitial.current) {
-      showInactiveInitial.current = false
-      return
-    }
-    void fetchAccounts()
-  }, [showInactive, fetchAccounts])
-
-  // Loads the BAS catalog and the "hide not-for-K2 accounts" default on
-  // demand, once, the first time the user opens the "BAS-katalog" tab.
   const ensureReferenceLoaded = useCallback(async () => {
     if (referenceLoaded || referenceLoading) return
     setReferenceLoading(true)

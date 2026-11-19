@@ -200,3 +200,34 @@ describe('ExtensionRegistry', () => {
     expect(handler.mock.calls[0][1]).toBeUndefined()
   })
 })
+
+describe('development extension replacement', () => {
+  it('replaces changed routes and handlers without duplicate subscriptions', async () => {
+    vi.stubEnv('NODE_ENV', 'development')
+    try {
+      const oldHandler = vi.fn()
+      const newHandler = vi.fn()
+      const oldRoute = vi.fn()
+      const newRoute = vi.fn()
+      const original = makeExtension({ apiRoutes: [{ method: 'GET', path: '/probe', handler: oldRoute }], eventHandlers: [{ eventType: 'journal_entry.committed', handler: oldHandler }] })
+      const updated = makeExtension({ apiRoutes: [{ method: 'GET', path: '/probe', handler: newRoute }], eventHandlers: [{ eventType: 'journal_entry.committed', handler: newHandler }] })
+      extensionRegistry.register(original)
+      extensionRegistry.register(updated)
+      extensionRegistry.register(updated)
+      expect(extensionRegistry.get('test-ext')?.apiRoutes?.[0].handler).toBe(newRoute)
+      await eventBus.emit({ type: 'journal_entry.committed', payload: { entry: { id: 'e1' } as never, userId: '', companyId: 'company-1' } })
+      expect(oldHandler).not.toHaveBeenCalled()
+      expect(newHandler).toHaveBeenCalledTimes(1)
+    } finally { vi.unstubAllEnvs() }
+  })
+
+  it('keeps the original definition in production', () => {
+    vi.stubEnv('NODE_ENV', 'production')
+    try {
+      const original = makeExtension()
+      extensionRegistry.register(original)
+      extensionRegistry.register(makeExtension({ name: 'Replacement' }))
+      expect(extensionRegistry.get('test-ext')).toBe(original)
+    } finally { vi.unstubAllEnvs() }
+  })
+})
