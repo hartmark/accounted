@@ -2109,7 +2109,6 @@
     "empty_filtered_clear": "Show all"
   },
   "supplier_invoices": {
-    "payment_source_import": "Imported from source system",
     "badge_self_billed": "Self-billing",
     "payee_alert_badge": "New bank details",
     "stage_incoming": "Received",
@@ -8431,6 +8430,7 @@
     "expense_registered_description": "The debt to {name} is now in To do. Arrival number: {number}"
   },
   "supplier_invoice_detail": {
+    "payment_source_import": "Imported from source system",
     "title_self_billed": "Self-billing invoice {number}",
     "badge_self_billed": "Self-billing",
     "download_self_billing": "View self-billing invoice",

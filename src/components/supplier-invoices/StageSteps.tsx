@@ -26,7 +26,7 @@ export function StageSteps({
   const t = useTranslations('supplier_invoices')
   const idx = stageIndex(current)
   return (
-    <div className="mb-6 grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
+    <div className="mb-6 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
       {stages.map((s) => {
         const i = stageIndex(s)
         const state: 'done' | 'now' | 'todo' = idx < 0 ? 'todo' : i < idx ? 'done' : i === idx ? 'now' : 'todo'
@@ -35,7 +35,7 @@ export function StageSteps({
           <div
             key={s}
             className={cn(
-              'flex min-w-0 flex-col items-start gap-1 rounded-sm border border-border px-3 py-2 sm:flex-1 sm:flex-row sm:items-baseline sm:gap-2',
+              'flex min-w-0 flex-col items-start gap-1 rounded-sm border border-border px-3 py-2',
               state === 'now' && 'bg-secondary shadow-[inset_0_-2px_0_hsl(var(--foreground))]',
             )}
           >

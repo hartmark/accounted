@@ -2109,7 +2109,6 @@
     "empty_filtered_clear": "Visa alla"
   },
   "supplier_invoices": {
-    "payment_source_import": "Importerad från källsystemet",
     "badge_self_billed": "Självfaktura",
     "payee_alert_badge": "Nya bankuppgifter",
     "stage_incoming": "Inkommen",
@@ -8431,6 +8430,7 @@
     "expense_registered_description": "Skulden till {name} finns nu i Att göra. Ankomstnummer: {number}"
   },
   "supplier_invoice_detail": {
+    "payment_source_import": "Importerad från källsystemet",
     "title_self_billed": "Självfaktura {number}",
     "badge_self_billed": "Självfaktura",
     "download_self_billing": "Visa självfaktura",
