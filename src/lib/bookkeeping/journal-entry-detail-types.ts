@@ -48,4 +48,3 @@ export type JournalEntryDetailRead = {
   }[]
   period_status: PeriodStatus | null
 }
-

@@ -1,7 +1,8 @@
 'use client'
 import { isLedgerCurrency } from '@/lib/bookkeeping/currency-utils'
 
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useCallback } from 'react'
+import useSWR from 'swr'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { useTranslations } from 'next-intl'
@@ -72,22 +73,27 @@ import { listContextKey } from '@/lib/navigation/list-context'
 import { useListReturnHref } from '@/lib/hooks/use-detail-pager'
 import { useCompanyOptional } from '@/contexts/CompanyContext'
 import { useAttribution } from '@/lib/attribution/use-attribution'
-import type { JournalEntry, JournalEntryLine } from '@/types'
+import type { JournalEntryLine } from '@/types'
 import type { UnderlagReference } from '@/lib/core/bookkeeping/journal-entry-references'
-import type { VoucherOwner } from '@/lib/core/bookkeeping/voucher-owner'
 import { OwnedVoucherActionDialog } from '@/components/bookkeeping/OwnedVoucherActionDialog'
 import { useReverseJournalEntry } from '@/components/bookkeeping/use-reverse-journal-entry'
-import type { SieDeleteBlock } from '@/lib/core/bookkeeping/voucher-delete-guard'
 import { DetailPageSkeleton } from '@/components/common/DetailPageSkeleton'
 
-import type { StruckLineSnapshot, RattelseLogRow, PeriodStatus } from '@/lib/bookkeeping/journal-entry-detail-types'
+import type { StruckLineSnapshot, JournalEntryDetailRead } from '@/lib/bookkeeping/journal-entry-detail-types'
 
 // Ledger amounts render as plain sv-SE numbers with two decimals (no currency
 // suffix), the same way the verifikat list's line tables do.
 const fmtAmount = (value: number | string): string =>
   Number(value).toLocaleString('sv-SE', { minimumFractionDigits: 2 })
 
-export default function JournalEntryDetail({id,initialCompanyId,initialData}:{id:string;initialCompanyId?:string;initialData?:import('@/lib/bookkeeping/journal-entry-detail-types').JournalEntryDetailRead}) {
+const NO_REFERENCES: UnderlagReference[] = []
+
+/** Render the server read immediately and share subsequent reads within the active company. */
+export default function JournalEntryDetail({ id, initialCompanyId, initialData }: {
+  id: string
+  initialCompanyId?: string
+  initialData?: JournalEntryDetailRead
+}) {
   const router = useRouter()
   const { canWrite } = useCanWrite()
   const company = useCompanyOptional()?.company ?? null
@@ -103,40 +109,40 @@ export default function JournalEntryDetail({id,initialCompanyId,initialData}:{id
   const { format: attribute } = useAttribution()
   const sourceTypeLabels = useSourceTypeLabels()
   const seed = company?.id === initialCompanyId ? initialData : undefined
-  const [entry, setEntry] = useState<JournalEntry | null>(()=>seed?.entry as JournalEntry ?? null)
-  const [chain, setChain] = useState<JournalEntry[]>(()=>seed?.chain as JournalEntry[] ?? [])
-  const [isLoading, setIsLoading] = useState(!seed)
-  const [error, setError] = useState<string | null>(null)
+  const { data: detail, error: detailError, isLoading, mutate: mutateDetail } = useSWR<JournalEntryDetailRead>(
+    company?.id ? ['journal-entry-detail', company.id, id] : null,
+    async () => {
+      const response = await fetch(`/api/bookkeeping/journal-entries/${id}/detail`)
+      if (!response.ok) throw new Error(t('error_load_failed'))
+      return (await response.json()).data
+    },
+    { fallbackData: seed, revalidateOnFocus: false, shouldRetryOnError: false },
+  )
+  // A failed optional read is distinct from a successful empty list. Share
+  // recovered references between voucher links and attachment discovery.
+  const { data: retriedReferences } = useSWR<UnderlagReference[]>(
+    company?.id && detail?.references === null ? ['journal-entry-references', company.id, id] : null,
+    async () => {
+      const response = await fetch(`/api/bookkeeping/journal-entries/${id}/references`)
+      if (!response.ok) throw new Error(t('error_load_failed'))
+      return (await response.json()).data.references
+    },
+    { revalidateOnFocus: false, errorRetryCount: 2 },
+  )
+  const entry = detail?.entry ?? null
+  const chain = detail?.chain ?? []
+  const error = detailError ? t('error_load_failed') : null
   const [showCorrection, setShowCorrection] = useState(false)
   const [showCorrectIB, setShowCorrectIB] = useState(false)
   const [showSplitIB, setShowSplitIB] = useState(false)
   const [showStrikeLines, setShowStrikeLines] = useState(false)
   const [showCorrectMetadata, setShowCorrectMetadata] = useState(false)
-  const [rattelseLog, setRattelseLog] = useState<RattelseLogRow[]>([])
-  // Lock state of the period covering entry_date, from the period-status
-  // preview endpoint. Gates the visible "Stryk rader" button: inline rättelse
-  // only applies while the period is open, so the promoted button hides
-  // (and the ⋯ item stays) whenever the status is anything else or unknown.
-  const [periodStatus, setPeriodStatus] = useState<PeriodStatus | null>(null)
-  // The entry's own fiscal period closed or locked: the period lock trigger
-  // refuses every write to the row, the note included (crm#1234). Not the
-  // company lock date: its trigger fires on entry_date only, so a note
-  // behind it is still saved.
-  const [noteLock, setNoteLock] = useState<'closed' | 'locked' | null>(null)
-  // The filed momsperiod the verifikat is dated in, from the same answer: a
-  // rättelse, a struck line, a new date or a storno there changes a
-  // declaration already filed, and the Rätta menu says so before the choice.
-  const [filedVat, setFiledVat] = useState<{
-    tax_period: string
-    filed_on: string
-    period_start: string
-    period_end: string
-  } | null>(null)
-  // Monotonic id of the latest fetchData run. The period-status fetch is not
-  // awaited, and fetchData re-runs on every id change and after every dialog
-  // success, so an earlier response can resolve last; only the response that
-  // belongs to the most recent run may set periodStatus.
-  const periodStatusRequestRef = useRef(0)
+  const rattelseLog = detail?.rattelse_log ?? []
+  const periodStatus = detail?.period_status ?? null
+  const period = detail?.period
+  const noteLock = period?.status === 'closed' ? 'closed'
+    : period?.status === 'locked' && period.period_id && !period.lock_date ? 'locked' : null
+  const filedVat = period?.filed_vat ?? null
   const [showEdit, setShowEdit] = useState(false)
   const [showRecordate, setShowRecordate] = useState(false)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
@@ -150,16 +156,16 @@ export default function JournalEntryDetail({id,initialCompanyId,initialData}:{id
   // action; the detail page used to fire the commit straight from the button.
   const [showCommitConfirm, setShowCommitConfirm] = useState(false)
   const [commitVoucherPreview, setCommitVoucherPreview] = useState<string | null>(null)
-  const [isLastInSeries, setIsLastInSeries] = useState(false)
+  const isLastInSeries = detail?.is_last_in_series ?? false
   // Set when the database refuses deleting this verifikat whatever the user
   // does (an SIE-imported verifikat, or the storno of an undone SIE import):
   // no "Radera verifikat" then, only where to go instead (PH 212).
-  const [deleteBlock, setDeleteBlock] = useState<SieDeleteBlock | null>(null)
+  const deleteBlock = detail?.delete_block ?? null
   const [attachmentCount, setAttachmentCount] = useState(0)
-  const [references, setReferences] = useState<UnderlagReference[]>([])
+  const references = detail?.references ?? retriedReferences ?? NO_REFERENCES
   // The object the verifikat books (an invoice, a periodisering, ...), from
   // the references GET: Vänd and Rätta lead with its own action first.
-  const [owner, setOwner] = useState<VoucherOwner | null>(null)
+  const owner = detail?.owned_by ?? null
   const [ownedIntent, setOwnedIntent] = useState<'reverse' | 'correct_lines' | 'correct_date' | null>(null)
   const [editingNotes, setEditingNotes] = useState(false)
   const [notesValue, setNotesValue] = useState('')
@@ -179,41 +185,12 @@ export default function JournalEntryDetail({id,initialCompanyId,initialData}:{id
   const dimensionsEnabled = settings?.dimensions_enabled === true
   const [retagLine, setRetagLine] = useState<RetagLine | null>(null)
   const [accrualPrefill, setAccrualPrefill] = useState<ManualAccrualPrefill | null>(null)
-  const [retagLog, setRetagLog] = useState<
-    { id: string; line_id: string; old_dimensions: Record<string, string>; new_dimensions: Record<string, string>; reason: string; created_at: string }[]
-  >([])
-
-  const seededRead = useRef(seed)
+  const retagLog = detail?.retag_log ?? []
   const fetchData = useCallback(async () => {
-    setIsLoading(!seededRead.current)
-    setError(null)
     try {
-      let data = seededRead.current
-      seededRead.current = undefined
-      if (!data) {
-        const response = await fetch(`/api/bookkeeping/journal-entries/${id}/detail`)
-        if (!response.ok) throw new Error('Detail read failed')
-        data = (await response.json()).data as import('@/lib/bookkeeping/journal-entry-detail-types').JournalEntryDetailRead
-      }
-      setEntry(data.entry as JournalEntry)
-      setChain(data.chain as JournalEntry[])
-      setIsLastInSeries(data.is_last_in_series)
-      setDeleteBlock(data.delete_block ?? null)
-      setRetagLog(data.retag_log)
-      setRattelseLog(data.rattelse_log)
-      setReferences(data.references ?? [])
-      setOwner(data.owned_by ?? null)
-      const period = data.period
-      const status = period?.status
-      setPeriodStatus(status === 'open' || status === 'locked' || status === 'closed' ? status : null)
-      setNoteLock(status === 'closed' ? 'closed' : status === 'locked' && period?.period_id && !period?.lock_date ? 'locked' : null)
-      setFiledVat(period?.filed_vat ?? null)
-    } catch {
-      setError(t('error_load_failed'))
-    } finally {
-      setIsLoading(false)
-    }
-  }, [id, t])
+      await mutateDetail()
+    } catch { /* SWR exposes failed refreshes through detailError. */ }
+  }, [mutateDetail])
 
   const saveNotes = useCallback(async (value: string) => {
     setSavingNotes(true)
@@ -224,7 +201,7 @@ export default function JournalEntryDetail({id,initialCompanyId,initialData}:{id
         body: JSON.stringify({ notes: value || null }),
       })
       if (res.ok) {
-        setEntry(prev => prev ? { ...prev, notes: value || null } : prev)
+        await mutateDetail(current => current ? { ...current, entry: { ...current.entry, notes: value || null } } : current, { revalidate: false })
         setEditingNotes(false)
       } else {
         // The refusal says why (a closed or locked period), not just that it failed.
@@ -240,7 +217,7 @@ export default function JournalEntryDetail({id,initialCompanyId,initialData}:{id
     } finally {
       setSavingNotes(false)
     }
-  }, [id, toast, t])
+  }, [id, toast, t, mutateDetail])
 
   // Open the confirm dialog and fetch the predicted voucher number. The
   // prediction is indicative (numbers are assigned atomically at commit); the
@@ -329,9 +306,6 @@ export default function JournalEntryDetail({id,initialCompanyId,initialData}:{id
     [reverse, id],
   )
 
-  useEffect(() => {
-    fetchData()
-  }, [fetchData])
 
   if (isLoading) {
     return <DetailPageSkeleton />
@@ -942,6 +916,7 @@ export default function JournalEntryDetail({id,initialCompanyId,initialData}:{id
         )}
         <JournalEntryAttachments
           journalEntryId={entry.id}
+          references={references}
           onCountChange={setAttachmentCount}
           variant="section"
         />
@@ -1046,7 +1021,7 @@ export default function JournalEntryDetail({id,initialCompanyId,initialData}:{id
           side shows the dimension's registry name and the code as logged:
           codes are what the trail recorded, names can change later. */}
       {dimensionsEnabled && retagLog.length > 0 && (
-        <DetailSection kicker="{t('dimension_history')}">
+        <DetailSection kicker={t('dimension_history')}>
           <ul className="divide-y divide-border text-sm">
             {retagLog.map((row) => {
               const lineForRow = lines.find((l) => l.id === row.line_id)

@@ -1,6 +1,8 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { readSieDeleteBlock, type SieDeleteBlock } from './voucher-delete-guard'
-export async function getJournalEntryChain(supabase:SupabaseClient,companyId:string,id:string) {
+
+/** Read the voucher and its bounded correction chain within the active company. */
+export async function getJournalEntryChain(supabase: SupabaseClient, companyId: string, id: string) {
   // Fetch the requested entry with lines
   const { data: entry, error } = await supabase
     .from('journal_entries')
