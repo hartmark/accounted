@@ -232,7 +232,7 @@ export default async function RootLayout({
             <BrandProvider brand={brand ? toPublicBrand(brand) : null}>
               <ThemeProvider
                 attribute="class"
-                defaultTheme="light"
+                defaultTheme="system"
                 enableSystem
                 disableTransitionOnChange
                 nonce={nonce}
