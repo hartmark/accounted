@@ -1,3 +1,4 @@
+import { decideMigrationRecord } from './migration-record-decision'
 import { readMigrationExtraDetails } from './migration-status-details'
 import { readMigrationSkipReasons, readPendingImportPayables } from './migration-result-details'
 import { ownInvoiceNumber, invoicePartyName } from './invoice-review-labels'
@@ -272,6 +273,7 @@ export async function readMigrationStatus(ctx: ExtensionContext, jobId?: string)
 }
 
 export const migrationJobRoutes: ApiRouteDefinition[] = [
+  { method: 'POST', path: '/migration-jobs/decision', handler: decideMigrationRecord },
   {
     method: 'GET', path: '/migration-jobs/reviews',
     handler: async (_request, ctx) => {

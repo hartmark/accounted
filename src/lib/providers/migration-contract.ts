@@ -135,7 +135,7 @@ export interface MigrationIssueReview {
 export interface ProviderMigrationIssue {
   invoiceNumber?: string; invoiceDate?: string; amount?: number; currency?: string;
   partyName?: string; targetId?: string | null; errorPhase?: string | null;
-  differences?: MigrationFieldDifference[]; comparisonUnavailable?: boolean;
+  differences?: MigrationFieldDifference[]; comparisonUnavailable?: boolean; targetUpdatedAt?: string;
   id: string
   resource: MigrationResource
   source_id: string

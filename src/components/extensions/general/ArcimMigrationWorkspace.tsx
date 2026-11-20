@@ -2953,6 +2953,7 @@ export function ResultStep({
   documentsOnly,
   theaterModel,
   review,
+  onReviewUpdated,
   onDone,
   onRetry,
   onDiscoverDocuments,
@@ -2972,6 +2973,7 @@ export function ResultStep({
    * here with their reasons, so finishing the import never hides them.
    */
   review: ProviderReviewResult | null
+  onReviewUpdated?: (status: ProviderMigrationStatus) => void
   sieResults: ImportResult[]
   /** Source fiscal years outside the selection: not fetched in this run. */
   omittedYears: SourceFiscalYear[]
@@ -3439,7 +3441,7 @@ export function ResultStep({
               : t('ext_arcim_review_result_lede')}
           </p>
           <ProviderMigrationIssues issues={review.issues} provider={review.provider}
-            total={review.total} truncated={review.truncated} />
+            total={review.total} truncated={review.truncated} jobId={review.status?.job.id} onUpdated={onReviewUpdated} />
         </section>
       )}
 
@@ -4992,6 +4994,17 @@ export default function ArcimMigrationWorkspace({
           documentsOnly={documentsOnly}
           theaterModel={theaterModel}
           review={providerReview}
+          onReviewUpdated={status => {
+            setProviderReview({ status, issues: status.issues, total: status.review.total,
+              truncated: status.review.truncated, provider: status.job.provider, acceptedAt: status.job.review_accepted_at ?? null })
+            setMigrationResults(previous => {
+              if (!previous) return previous
+              const next = { ...previous }
+              for (const row of status.counts) next[row.resource] = { ...next[row.resource], total: row.total,
+                imported: row.imported, skipped: row.skipped, unchanged: row.unchanged }
+              return next
+            })
+          }}
           onDone={handleDone}
           blockedPeriod={blockedPeriod}
           isReopening={isReopening}

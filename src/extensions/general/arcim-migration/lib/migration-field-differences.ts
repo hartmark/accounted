@@ -29,7 +29,7 @@ export function compareMigrationFields(source: Record<string, unknown>, local: R
 }
 
 export async function readMigrationFieldDifferences(db: SupabaseClient, companyId: string,
-  resource: MigrationResource, targetId: string, dto: unknown,
+  resource: MigrationResource, targetId: string, dto: unknown, revision?: { updatedAt?: string },
 ): Promise<MigrationFieldDifference[] | null> {
   const sales = resource === 'salesInvoices', supplier = resource === 'supplierInvoices'
   const table = sales ? 'invoices' : supplier ? 'supplier_invoices' : resource
@@ -37,6 +37,7 @@ export async function readMigrationFieldDifferences(db: SupabaseClient, companyI
     .eq('company_id', companyId).eq('id', targetId).maybeSingle()
   if (error) throw error
   if (!local) return null
+  if (revision && typeof local.updated_at === 'string') revision.updatedAt = local.updated_at
   if (!sales && !supplier) {
     const source = resource === 'customers' ? mapCustomer(dto as CustomerDto, '', companyId) : mapSupplier(dto as SupplierDto, '', companyId)
     return compareMigrationFields(source, local, partyFields)

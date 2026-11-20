@@ -120,7 +120,7 @@ export default function ProviderMigrationProgress({ jobId, onResult, onReconnect
       {disconnected && <p className="text-sm text-muted-foreground">{t('ext_arcim_job_connection')}</p>}
       {review && status && <div className="space-y-6">
         <ProviderMigrationIssues issues={status.issues} provider={status.job.provider}
-          total={review.total} truncated={review.truncated} />
+          total={review.total} truncated={review.truncated} jobId={jobId} onUpdated={updated => { setStatus(updated); if (updated.job.state === 'completed') onResultRef.current(updated) }} />
         {review.unchanged && <div className="space-y-1">
           <AttnLine>{t('ext_arcim_review_unchanged', { provider })}</AttnLine>
           <p className="text-[13px] text-muted-foreground">{t('ext_arcim_review_unchanged_next')}</p>
@@ -129,10 +129,6 @@ export default function ProviderMigrationProgress({ jobId, onResult, onReconnect
           {t(actionFailed === 'accept' ? 'ext_arcim_review_accept_failed' : 'ext_arcim_review_retry_failed')}
         </p>}
         <div className="flex flex-col-reverse gap-3 border-t-hairline pt-6 sm:flex-row sm:justify-end">
-          {!review.unchanged && <Button variant="outline" onClick={() => void act('retry')}
-            loading={busy === 'retry'} disabled={busy !== null}>
-            {t('ext_arcim_review_retry', { count: review.total + review.staleOutsideYears })}
-          </Button>}
           <Button onClick={() => void act('accept')} loading={busy === 'accept'} disabled={busy !== null}>
             {t('ext_arcim_review_accept')}
           </Button>

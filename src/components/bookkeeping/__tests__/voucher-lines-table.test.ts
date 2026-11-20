@@ -43,7 +43,7 @@ describe('surfaces on the shared voucher lines table', () => {
     'components/suppliers/SupplierInvoiceReviewContent.tsx',
     'components/transactions/QuickReviewDialog.tsx',
     'components/bookkeeping/year-end/PreviewStep.tsx',
-    'app/(dashboard)/bookkeeping/[id]/page.tsx',
+    'components/bookkeeping/JournalEntryDetail.tsx',
   ])('%s', (rel) => {
     const src = fs.readFileSync(path.join(root, rel), 'utf8')
     expect(src).toContain('<VoucherLinesTable')
@@ -52,7 +52,7 @@ describe('surfaces on the shared voucher lines table', () => {
   })
 
   it('the verifikat page keeps Swedish heads in both locales', () => {
-    const src = fs.readFileSync(path.join(root, 'app/(dashboard)/bookkeeping/[id]/page.tsx'), 'utf8')
+    const src = fs.readFileSync(path.join(root, 'components/bookkeeping/JournalEntryDetail.tsx'), 'utf8')
     expect(src).toMatch(/<VoucherLinesTable[\s\S]*?\bswedish\b/)
   })
 
@@ -73,10 +73,10 @@ describe('long account names wrap instead of pushing the amounts out', () => {
   const src = fs.readFileSync(path.resolve(__dirname, '../VoucherLinesTable.tsx'), 'utf8')
   const bodyCells = [...src.matchAll(/<td className=\{cn\(VTD_CLASS,([^}]*)\)\}>/g)].map((m) => m[1])
 
-  it('the Konto column has neither a fixed width nor nowrap', () => {
+  it('the description column keeps long account names wrappable', () => {
     expect(src).not.toMatch(/w-\[180px\]/)
-    expect(bodyCells[0]).toBeDefined()
-    expect(bodyCells[0]).not.toContain('whitespace-nowrap')
+    expect(bodyCells[1]).toBeDefined()
+    expect(bodyCells[1]).not.toContain('whitespace-nowrap')
   })
 
   it('the Debet and Kredit cells stay on one line', () => {

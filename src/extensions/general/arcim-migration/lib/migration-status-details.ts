@@ -18,10 +18,11 @@ export async function readMigrationExtraDetails(supabase:SupabaseClient, company
     .from('migration_job_chunks').select('id,resource,source_id,target_id,payload,receipt')
     .eq('company_id',ctx.companyId).eq('job_id',job.id).eq('state','skipped')
     .neq('receipt->>reason','unchanged').order('id').range(from,to)) : []
-  const comparisons = new Map<string, { differences?: import('@/lib/providers/migration-contract').MigrationFieldDifference[]; comparisonUnavailable?: boolean }>()
+  const comparisons = new Map<string, { differences?: import('@/lib/providers/migration-contract').MigrationFieldDifference[]; comparisonUnavailable?: boolean; targetUpdatedAt?: string }>()
   for (const row of (changes ?? []).filter(row => row.receipt?.reason === 'source_changed')) {
     try {
-      const differences = await readMigrationFieldDifferences(ctx.supabase,ctx.companyId,row.resource,row.target_id,openMigrationPayload(row.payload))
+      const revision: { updatedAt?: string } = {}
+      const differences = await readMigrationFieldDifferences(ctx.supabase,ctx.companyId,row.resource,row.target_id,openMigrationPayload(row.payload),revision)
       if (differences && !differences.length) {
         // The imported source snapshot can be more complete than a provider
         // list response. Explain that actual hash change instead of implying
@@ -41,7 +42,7 @@ export async function readMigrationExtraDetails(supabase:SupabaseClient, company
             differences.push({field:'source_line_count',source:current.lines.length,accounted:previous.lines.length})
         }
       }
-      comparisons.set(row.id,differences ? { differences } : { comparisonUnavailable:true })
+      comparisons.set(row.id,differences ? { differences, targetUpdatedAt: revision.updatedAt } : { comparisonUnavailable:true })
     } catch { comparisons.set(row.id,{ comparisonUnavailable:true }) }
   }
   const describedChanges = (Array.isArray(changes) ? changes : []).map(row => {
