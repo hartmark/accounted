@@ -448,6 +448,27 @@ describe('reconcileSupplierInvoiceVouchers: a voucher that cites another invoice
     expect(res.links[0]).toMatchObject({ supplier_invoice_id: 'i1', journal_entry_id: 'v-493' })
   })
 
+  it('does not auto-link another Bokio invoice even after this invoice date', async () => {
+    queue([inv({ id: 'i1', invoiceDate: '2026-10-14', due: '2026-11-01' })])
+    mFind.mockResolvedValueOnce([
+      cand({ je: 'v-old', date: '2026-10-15', confidence: 0.99,
+        desc: 'Leverantörsfaktura: Leverantör AB - 1569693102 - Pension' }),
+    ] as never)
+    const res = await run()
+    expect(res.autoLinked).toBe(0)
+    expect(res.review[0]?.reason).toBe('names_other_invoice')
+    expect(mLink).not.toHaveBeenCalled()
+  })
+
+  it('compares Bokio references with the supplier number, never the Fortnox number', () => {
+    const voucher = { description: 'Leverantörsfaktura: Livförsäkringsbolaget Skandia Ömse - 1569693102 - Pensionsförsäkring' }
+    expect(citesOtherInvoice(voucher, { supplier_invoice_number: '1611133602' })).toBe(true)
+    expect(citesOtherInvoice(voucher, { supplier_invoice_number: '1569693102', fortnox_number: '493' })).toBe(false)
+    expect(citesOtherInvoice(voucher, { fortnox_number: '493' })).toBe(false)
+    expect(citesOtherInvoice({ description: 'Levbet Leverantör AB (487)' },
+      { supplier_invoice_number: '487', fortnox_number: '493' })).toBe(true)
+  })
+
   it('decides nothing without a number on both sides', () => {
     expect(citesOtherInvoice({ description: 'Levbet Leverantör AB (487)' }, {})).toBe(false)
     expect(citesOtherInvoice({ description: 'Levbet Leverantör AB' }, { fortnox_number: '493' })).toBe(false)

@@ -183,6 +183,8 @@ export function paidBeforeInvoice(
 
 /** The number a Fortnox payment voucher cites last in its text: "Levbet Leverantör AB (487)". */
 const CITED_INVOICE_NUMBER = /\((\d+)\)\s*$/
+/** Bokio SIE descriptions name the supplier invoice between spaced separators. */
+const BOKIO_INVOICE_NUMBER = /^Leverantörsfaktura:\s+.+?\s+-\s+([A-Za-z0-9][A-Za-z0-9/-]*)\s+-/i
 
 /**
  * Whether the voucher text cites another invoice than this one. Fortnox ends
@@ -192,16 +194,20 @@ const CITED_INVOICE_NUMBER = /\((\d+)\)\s*$/
  * name, dated after this invoice arrived, passes every other check and marked
  * an unpaid invoice as paid (PH 264). A voucher that cites another number is
  * that invoice's payment; an unattended link never takes it, a person still
- * can, from the review list. No number on either side decides nothing.
+ * can, from the review list. Bokio SIE uses the supplier invoice number
+ * between spaced separators instead. No number on either side decides nothing.
  */
 export function citesOtherInvoice(
   candidate: Pick<SupplierVoucherCandidate, 'description'>,
-  invoice: { fortnox_number?: string | null },
+  invoice: { fortnox_number?: string | null; supplier_invoice_number?: string | null },
 ): boolean {
-  const own = invoice.fortnox_number?.trim()
-  if (!own) return false
-  const cited = CITED_INVOICE_NUMBER.exec(candidate.description ?? '')?.[1]
-  return !!cited && cited !== own
+  const text = candidate.description ?? ''
+  const bokioNumber = BOKIO_INVOICE_NUMBER.exec(text)?.[1]
+  // Fortnox cites its internal number; Bokio cites the supplier invoice number.
+  // Keep these namespaces separate even when both happen to be present.
+  const own = (bokioNumber ? invoice.supplier_invoice_number : invoice.fortnox_number)?.trim()
+  const cited = bokioNumber ?? CITED_INVOICE_NUMBER.exec(text)?.[1]
+  return !!own && !!cited && cited !== own
 }
 
 /**
