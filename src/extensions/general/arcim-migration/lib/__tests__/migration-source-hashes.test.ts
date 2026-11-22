@@ -3,6 +3,9 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import type { ProviderMigrationJob } from '@/lib/providers/migration-contract'
 import { migrationSourceHash, sealMigrationPayload } from '@/lib/providers/migration-payload'
 import { sourceHashBaselines } from '../migration-source-hashes'
+import { mapBokioToSupplier } from '@/lib/providers/bokio/mapper'
+import { mapSupplier } from '../entity-mapper'
+import { compareMigrationFields } from '../migration-field-differences'
 
 const job = { id: 'job', worker_id: 'worker', attempt: 3 } as ProviderMigrationJob
 beforeEach(() => vi.stubEnv('PERSONNUMMER_ENCRYPTION_KEY', 'source-hashes-test-only'))
@@ -28,6 +31,27 @@ describe('source hash baseline batching', () => {
     }
     expect(rows).toEqual(ids.map(id => ({ record_id: id, chunk_id: `chunk-${id}`,
       payload_hash: 'retained-hash', source_hash: migrationSourceHash({ id }) })))
+  })
+
+  it.each([
+    ['bankgiro', 'bankgiroNumber', 'bankGiro', 'bankgiro', '5050-1055'],
+    ['plusgiro', 'plusgiroNumber', 'plusGiro', 'plusgiro', '4866603-6'],
+  ])('keeps the old %s omission reviewable when the current mapper recovers the field', async (type, rawKey, dtoKey, localKey, value) => {
+    const current = mapBokioToSupplier({
+      id: 'supplier', name: 'Supplier AB', paymentDetails: { type, [rawKey]: value },
+    })
+    // The old import retained paymentDetails in _raw but dropped the normalized giro.
+    const historical = { ...current }
+    delete (historical as unknown as Record<string, unknown>)[dtoKey]
+    const rpc = vi.fn().mockResolvedValue({ data: [{
+      record_id: 'record', chunk_id: 'old-chunk', payload_hash: 'stored',
+      payload: sealMigrationPayload(historical).payload,
+    }], error: null })
+    const [baseline] = await sourceHashBaselines({ rpc } as unknown as SupabaseClient, job, 'suppliers', ['supplier'])
+    expect(baseline.source_hash).toBe(migrationSourceHash(historical))
+    expect(baseline.source_hash).not.toBe(migrationSourceHash(current))
+    expect(compareMigrationFields(mapSupplier(current, 'user', 'company'),
+      { [localKey]: null }, [localKey])).toEqual([{ field: localKey, source: value, accounted: null }])
   })
 
   it('retains database error codes and stops before later batches', async () => {

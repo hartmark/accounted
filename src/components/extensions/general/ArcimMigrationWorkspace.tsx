@@ -4130,6 +4130,22 @@ export default function ArcimMigrationWorkspace({
     }
   }, [])
 
+  const automaticDocumentJobRef = useRef<string | null>(null)
+  const runAutomaticDocuments = useCallback(async (currentConsentId: string, provider: string) => {
+    if (!supportsUnderlagImport(provider)) return
+    // Initialize the panel, then import directly. A sync includes its documents.
+    dispatchDocumentImport({ type: 'discovery-started', provider, migrationSucceeded: true })
+    await runDocumentImport(currentConsentId)
+  }, [runDocumentImport])
+
+  const startJobDocuments = useCallback((status: ProviderMigrationStatus) => {
+    if (!status.job.consent_id || automaticDocumentJobRef.current === status.job.id) return
+    if (!supportsUnderlagImport(status.job.provider)) return
+    automaticDocumentJobRef.current = status.job.id
+    setConsentId(status.job.consent_id)
+    void runAutomaticDocuments(status.job.consent_id, status.job.provider)
+  }, [runAutomaticDocuments])
+
   // Run the underlag import on its own against an active consent (Fortnox or
   // Bokio). Same discovery, import and, for Fortnox, scope-reconnect path as
   // the tail of a migration; only the surrounding page differs (no migration
@@ -4748,7 +4764,7 @@ export default function ArcimMigrationWorkspace({
         selectedProvider,
       )
       if (documentProvider) {
-        void runDocumentDiscovery(consentId, documentProvider, true)
+        void runAutomaticDocuments(consentId, documentProvider)
       }
 
       if (hadStepErrors) {
@@ -4770,7 +4786,7 @@ export default function ArcimMigrationWorkspace({
       migrationInFlightRef.current = false
       setIsStartingMigration(false)
     }
-  }, [consentId, migrationOptions, openActiveProviderJob, preview, t, refreshFiscalPeriods, selectedYears, runDocumentDiscovery, selectedProvider, sieData, toast])
+  }, [consentId, migrationOptions, openActiveProviderJob, preview, t, refreshFiscalPeriods, selectedYears, runAutomaticDocuments, selectedProvider, sieData, toast])
 
   const handleReopenAndRetry = useCallback(async () => {
     if (!blockedPeriod || reopenInFlightRef.current || migrationInFlightRef.current) return
@@ -4818,7 +4834,17 @@ export default function ArcimMigrationWorkspace({
   // ── Render ─────────────────────────────────────────────────────
 
   if (providerJobId) {
-    return <ProviderMigrationProgress jobId={providerJobId} onReconnect={status => {
+    return <ProviderMigrationProgress jobId={providerJobId}
+      onRegistersReady={startJobDocuments}
+      followUp={<DocumentImportFollowUp
+        consentId={consentId}
+        state={documentImportState}
+        onDiscover={() => { if (consentId) void runAutomaticDocuments(consentId, documentImportState.provider ?? '') }}
+        onImport={() => { if (consentId) void runDocumentImport(consentId, documentImportState.result) }}
+        onDismiss={() => dispatchDocumentImport({ type: 'dismissed' })}
+        onReconnect={handleDocumentReconnect}
+      />}
+      onReconnect={status => {
       reconnectJobRef.current = status.job.id
       setStep('preview')
       setProviderJobId(null)
@@ -4873,8 +4899,7 @@ export default function ArcimMigrationWorkspace({
       setMigrationProgress(100)
       setStep('result')
       void fetchStatus()
-      const provider = resolveArcimDocumentFollowUpProvider(status.job.provider, selectedProvider)
-      if (provider && status.job.consent_id) void runDocumentDiscovery(status.job.consent_id, provider, true)
+      startJobDocuments(status)
     }} />
   }
 

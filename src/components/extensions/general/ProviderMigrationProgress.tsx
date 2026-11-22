@@ -1,7 +1,7 @@
 'use client'
 
 import MigrationSkippedRecords from './MigrationSkippedRecords'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { useTranslations } from 'next-intl'
 import { Button } from '@/components/ui/button'
 import { Progress } from '@/components/ui/progress'
@@ -11,10 +11,12 @@ import ProviderMigrationIssues, { migrationProviderName } from './ProviderMigrat
 
 const ROOT = '/api/extensions/ext/arcim-migration/migration-jobs'
 
-export default function ProviderMigrationProgress({ jobId, onResult, onReconnect }: {
+export default function ProviderMigrationProgress({ jobId, onResult, onReconnect, onRegistersReady, followUp }: {
   onReconnect: (status: ProviderMigrationStatus) => void
   jobId: string
   onResult: (status: ProviderMigrationStatus) => void
+  onRegistersReady?: (status: ProviderMigrationStatus) => void
+  followUp?: ReactNode
 }) {
   const t = useTranslations('extensions')
   const [status, setStatus] = useState<ProviderMigrationStatus | null>(null)
@@ -23,6 +25,8 @@ export default function ProviderMigrationProgress({ jobId, onResult, onReconnect
   const [actionFailed, setActionFailed] = useState<'retry' | 'accept' | null>(null)
   const [refresh, setRefresh] = useState(0)
   const onResultRef = useRef(onResult)
+  const readyRef = useRef(onRegistersReady)
+  useEffect(() => { readyRef.current = onRegistersReady }, [onRegistersReady])
   useEffect(() => { onResultRef.current = onResult }, [onResult])
 
   useEffect(() => {
@@ -37,6 +41,8 @@ export default function ProviderMigrationProgress({ jobId, onResult, onReconnect
         if (controller.signal.aborted) return
         setStatus(data.data)
         setDisconnected(false)
+        // Documents follow the completed register fetch, independently of review decisions.
+        if (data.data.job.phase === 'completed') readyRef.current?.(data.data)
         if (data.data.job.state === 'completed') {
           onResultRef.current(data.data)
           return
@@ -117,6 +123,7 @@ export default function ProviderMigrationProgress({ jobId, onResult, onReconnect
           <p className="text-sm">{t('ext_arcim_review_stale_outside_years', { count: review.staleOutsideYears })}</p>
         )}
       </>}
+      {followUp}
       {disconnected && <p className="text-sm text-muted-foreground">{t('ext_arcim_job_connection')}</p>}
       {review && status && <div className="space-y-6">
         <ProviderMigrationIssues issues={status.issues} provider={status.job.provider}
