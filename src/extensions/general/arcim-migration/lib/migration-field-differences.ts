@@ -57,12 +57,30 @@ export async function readMigrationFieldDifferences(db: SupabaseClient, companyI
   // Incomplete provider evidence must not masquerade as deleted invoice rows.
   const raw = dto as SupplierInvoiceDto
   if (supplier && raw.supplierEvidence && !raw.supplierEvidence.itemsComplete) return result.map(diff => ({...diff,currency:String(mapped.invoice.currency)}))
-  for (let i = 0; i < Math.max(mapped.items.length, items.length); i++) {
-    const source = mapped.items[i], current = items[i]
+  result.push(...compareMigrationInvoiceItems(mapped.items, items, provider))
+  return result.map(diff => ({...diff,currency:String(mapped.invoice.currency)}))
+}
+
+
+/** Bokio may return the same identified rows in a different order on later reads. */
+export function compareMigrationInvoiceItems(sourceItems: Record<string, unknown>[],
+  localItems: Record<string, unknown>[], provider?: string): MigrationFieldDifference[] {
+  const result: MigrationFieldDifference[] = []
+  for (let i = 0; i < Math.max(sourceItems.length, localItems.length); i++) {
+    const source = sourceItems[i], current = localItems[i]
     if (!source || !current) {
       result.push({ field: 'invoice_line', source: source ? String(source.description || '') : null,
         accounted: current ? String(current.description || '') : null, line: i + 1 })
     } else result.push(...compareMigrationFields(source, current, itemFields, i + 1, provider))
   }
-  return result.map(diff => ({...diff,currency:String(mapped.invoice.currency)}))
+  if (!result.length || provider !== 'bokio' || sourceItems.length !== localItems.length) return result
+
+  // Match every occurrence once. A set would incorrectly hide missing duplicate rows.
+  const unmatched = [...localItems]
+  for (const source of sourceItems) {
+    const index = unmatched.findIndex(current => !compareMigrationFields(source, current, itemFields, undefined, provider).length)
+    if (index < 0) return result
+    unmatched.splice(index, 1)
+  }
+  return []
 }

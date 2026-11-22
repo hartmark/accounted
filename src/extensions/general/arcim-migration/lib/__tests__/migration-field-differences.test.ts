@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { compareMigrationFields } from '../migration-field-differences'
+import { compareMigrationFields, compareMigrationInvoiceItems } from '../migration-field-differences'
 
 describe('migration field differences', () => {
   it('shows source on the left and actual Accounted values on the right', () => {
@@ -34,5 +34,34 @@ describe('migration field differences', () => {
   it('identifies a changed invoice line', () => {
     expect(compareMigrationFields({description:'New',quantity:2},{description:'Old',quantity:1},['description','quantity'],3))
       .toEqual([{field:'description',source:'New',accounted:'Old',line:3},{field:'quantity',source:2,accounted:1,line:3}])
+  })
+})
+
+describe('Bokio invoice row order', () => {
+  const charged = {description:'Utveckling',quantity:106,unit:'tim',unit_price:1000,line_total:106000,vat_rate:25,vat_amount:26500,account_number:'3041'}
+  const note = {description:'Fakturan för december är inte betald',quantity:0,unit:'st',unit_price:0,line_total:0,vat_rate:0,vat_amount:0,account_number:null}
+  const legacy = {...charged,unit:'hour',quantity:'106',line_total:'106000.00'}
+  it('recognizes the same charged and description rows in reverse order without rewriting them', () => {
+    expect(compareMigrationInvoiceItems([charged,note],[note,legacy],'bokio')).toEqual([])
+  })
+  it('preserves changed amounts even when rows are reordered', () => {
+    const differences=compareMigrationInvoiceItems([charged,note],[note,{...legacy,line_total:107000}],'bokio')
+    expect(differences.some(diff=>diff.field==='line_total')).toBe(true)
+  })
+  it('preserves changed descriptions, account numbers, VAT and units', () => {
+    for (const patch of [{description:'Other'},{account_number:'3001'},{vat_amount:26000},{unit:'dag'}]) {
+      expect(compareMigrationInvoiceItems([charged,note],[note,{...legacy,...patch}],'bokio').length).toBeGreaterThan(0)
+    }
+  })
+  it('counts duplicate occurrences instead of treating rows as a set', () => {
+    expect(compareMigrationInvoiceItems([charged,charged,note],[note,legacy,note],'bokio').length).toBeGreaterThan(0)
+    expect(compareMigrationInvoiceItems([charged,charged,note],[note,legacy,legacy],'bokio')).toEqual([])
+  })
+  it('preserves added and missing rows', () => {
+    expect(compareMigrationInvoiceItems([charged,note],[legacy],'bokio').some(diff=>diff.field==='invoice_line')).toBe(true)
+    expect(compareMigrationInvoiceItems([charged],[note,legacy],'bokio').some(diff=>diff.field==='invoice_line')).toBe(true)
+  })
+  it('does not change other providers row ordering rules', () => {
+    expect(compareMigrationInvoiceItems([charged,note],[note,charged],'fortnox').length).toBeGreaterThan(0)
   })
 })
