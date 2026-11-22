@@ -1,5 +1,7 @@
 'use client'
 
+import { ResponsiveTable } from '@/components/ui/responsive-table'
+
 import { UUID_RE } from '@/lib/invariants/uuid'
 import { useState, useEffect, useMemo, useRef, useCallback, type ComponentProps } from 'react'
 import type { SupabaseDataClient } from '@/lib/supabase/data-client'
@@ -4975,7 +4977,8 @@ export default function TransactionsPage() {
 
             {/* Negative margin + matching padding: the scroll container runs
                 to the panel edges while the columns keep the page padding. */}
-            <div className="overflow-x-auto -mx-4 px-2 md:-mx-6 md:px-4">
+            <ResponsiveTable primaryColumn={txColumns.has('date') ? 3 : 2} actionsColumn="last">
+
               <table className="w-full border-collapse text-[13px]">
                 <thead>
                   <tr>
@@ -5087,7 +5090,29 @@ export default function TransactionsPage() {
                   )}
                 </tbody>
               </table>
-            </div>
+            </ResponsiveTable>
+            {/* Bridge to the bulk-match flow: a backlog of unbooked bank rows
+                is usually a migration/import whose counterpart vouchers
+                already exist, and the only match affordance here is per-row.
+                Static text + count (no probe): the reconciliation preview is
+                the honest source of how many actually match. Sits below the
+                list so the rows themselves stay first, and yields to the
+                review-suggestions attn at the top of the page (max one ochre
+                sentence per page): when the sweep has already persisted
+                suggestions, "Granska förslagen" is the more precise
+                destination for the same backlog. */}
+            {selectableInboxIds.length >= 5 && suggestionItems.length === 0 && (
+              <AttnLine
+                className="px-1 pt-3"
+                action={{
+                  label: t('recon_attn_action'),
+                  href: '/reconciliation?autorun=1',
+                }}
+              >
+                {t('recon_attn', { count: selectableInboxIds.length })}
+              </AttnLine>
+            )}
+
           </div>
         )
       ) : (

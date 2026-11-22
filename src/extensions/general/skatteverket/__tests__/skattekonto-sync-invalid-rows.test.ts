@@ -1,3 +1,6 @@
+vi.mock('../lib/skattekonto-import-match', () => ({
+  matchImportedSkattekonto: vi.fn().mockResolvedValue({ considered: 0, linked: 0, skipped: 0, failed: false }),
+}))
 /**
  * Tests for sync resilience against SKV transaktioner rows that cannot
  * satisfy the table's NOT NULL columns (transaktionsdatum, transaktionstext,

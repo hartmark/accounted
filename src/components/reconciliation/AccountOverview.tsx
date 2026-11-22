@@ -1,5 +1,7 @@
 'use client'
 
+import { ResponsiveTable } from '@/components/ui/responsive-table'
+
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import dynamic from 'next/dynamic'
@@ -13,6 +15,8 @@ import { Skeleton, LateReveal } from '@/components/ui/skeleton'
 import { LoadError } from '@/components/ui/empty-state'
 import { DialogLoadingSkeleton } from '@/components/ui/dialog-loading-skeleton'
 import { QUIET_LINK_CLASS } from '@/components/ui/dry-table'
+
+
 import { useToast } from '@/components/ui/use-toast'
 import { cn, formatCurrency, formatDate } from '@/lib/utils'
 import { getErrorMessage as getUserErrorMessage } from '@/lib/errors/get-error-message'
@@ -31,7 +35,10 @@ import { ReconciliationUnderlag } from './ReconciliationUnderlag'
 import { MatcherPreview, type MatcherMatch } from './MatcherPreview'
 import { ReconciliationSummary } from './ReconciliationSummary'
 import { lacksSkatteverketSaldo, sidesAgree, skatteverketNotConnected } from './verdict'
+import { TH_CLASS } from '@/components/ui/dry-table'
 import { PairRow, PairsHead } from './ReconciliationPairs'
+
+
 import { InfoTooltip } from '@/components/ui/info-tooltip'
 import { todayIsoStockholm } from '@/lib/dates/iso'
 import { SKATTEKONTO_ACCOUNT_DEFAULT, isSkattekontoLedgerAccount } from '@/lib/skatteverket/skattekonto-account'
@@ -1022,10 +1029,18 @@ export function AccountOverview({ account, otherBankAccounts = [], window, onCha
       ) : items.items.length === 0 && (byBucket.get('before_history')?.length ?? 0) === 0 ? (
         <p className="text-[13px] text-muted-foreground">{t('all_clear')}</p>
       ) : (
-        <div className="overflow-x-auto">
+        <ResponsiveTable primaryColumn={2}>
           <table className="w-full text-[13px]">
             <thead>
-              <PairsHead externalLabel={isSkv ? t('v2_side_external_skv') : t('v2_side_external_bank')} />
+              <tr>
+                <th className={cn(TH_CLASS, '!pl-0 w-[96px]')}>{t('col_date')}</th>
+                <th className={cn(TH_CLASS, 'w-[30%]')}>{isSkv ? t('v2_side_external_skv') : t('v2_side_external_bank')}</th>
+                <th className={cn(TH_CLASS, 'w-[120px] text-right')}>{t('col_amount')}</th>
+                <th className={cn(TH_CLASS, 'w-[96px] pl-6')}>{t('col_date')}</th>
+                <th className={TH_CLASS}>{t('v2_side_ledger')}</th>
+                <th className={cn(TH_CLASS, 'w-[120px] text-right')}>{t('col_amount')}</th>
+                <th className={cn(TH_CLASS, '!pr-0 w-[150px]')} aria-hidden="true"></th>
+              </tr>
             </thead>
             <tbody className="stagger-enter">
               {BUCKET_ORDER.map((bucket) => {
@@ -1107,7 +1122,7 @@ export function AccountOverview({ account, otherBankAccounts = [], window, onCha
           {items.has_more && (
             <p className="px-4 pt-3 text-xs text-muted-foreground">{t('truncated', { count: ITEMS_LIMIT })}</p>
           )}
-        </div>
+        </ResponsiveTable>
       )}
 
       {openWork === 0 && items.items.length > 0 && (

@@ -1,3 +1,6 @@
+vi.mock('../lib/skattekonto-import-match', () => ({
+  matchImportedSkattekonto: vi.fn().mockResolvedValue({ considered: 0, linked: 0, skipped: 0, failed: false }),
+}))
 /**
  * When a sync run on another member's token dies with a terminal auth error,
  * the connection-expired event must name the token OWNER, not whoever

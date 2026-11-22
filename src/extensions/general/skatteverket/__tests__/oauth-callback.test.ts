@@ -562,6 +562,22 @@ describe('skatteverket OAuth callback', () => {
       )
     })
 
+    it('exchanges a relayed namespaced state using the registered callback and local initiator', async () => {
+      const state = 'instance.accounted-dev.random-state'
+      stateIs(flowOn(APP, { id: state }))
+      const response = await callbackRoute().handler(callbackRequest(APP, `code=abc&state=${state}`))
+      expect(response.status).toBe(200)
+      expect(await response.text()).toContain('skatteverket-oauth-success')
+      expect(mockConsumeState).toHaveBeenCalledWith(expect.anything(), state, 'skatteverket')
+      expect(mockMintHandoff).not.toHaveBeenCalled()
+      expect(mockExchange).toHaveBeenCalledWith(
+        'abc',
+        `${OAUTH_HOST}/api/extensions/ext/skatteverket/callback`,
+        'verifier-1',
+        undefined,
+      )
+    })
+
     it("carries the proxy's nonce on the popup script and in its own CSP", async () => {
       // A self-hosted `next start` delivers only the proxy's CSP header
       // (src/proxy.ts): the script must carry the nonce that header trusts.

@@ -1,6 +1,8 @@
 'use client'
 
 import { Fragment, useEffect, useMemo, useState } from 'react'
+import { ResponsiveTable } from '@/components/ui/responsive-table'
+
 import { useRouter } from 'next/navigation'
 import { useLocale, useTranslations } from 'next-intl'
 import { HashtagIcon, PlusIcon, TrashIcon } from '@/components/icons'
@@ -497,10 +499,8 @@ export default function SalesOrderForm({ mode, initial, formId, onSubmittingChan
       </DetailSection>
 
       <DetailSection kicker={t('section_lines')}>
-        {/* relative: the cells' absolutely placed helpers (sr-only text, a
-            select's hidden native element) stay inside the scroller instead of
-            widening the page on a phone. */}
-        <div className="relative overflow-x-auto">
+        <ResponsiveTable>
+
           <table className="w-full border-collapse text-[13px]">
             <thead>
               <tr>
@@ -696,7 +696,7 @@ export default function SalesOrderForm({ mode, initial, formId, onSubmittingChan
               })}
             </tbody>
           </table>
-        </div>
+        </ResponsiveTable>
         {errors.lines && <p className="mt-2 text-sm text-destructive">{errors.lines}</p>}
 
         <div className="mt-4 flex flex-wrap items-center gap-2">

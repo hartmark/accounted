@@ -1,3 +1,4 @@
+import { matchImportedSkattekonto } from './skattekonto-import-match'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { ExtensionContext } from '@/lib/extensions/types'
 import { eventBus } from '@/lib/events/bus'
@@ -589,6 +590,9 @@ export async function syncSkattekonto(
   // Exact-twin proposals for the open rows (migration 20260823120000): the
   // reconciliation page, the worklist and agents read them from the row
   // instead of recomputing per request. Best-effort inside (never throws).
+  // Import may precede the first SKV connection: complete those links when
+  // the external events arrive, before caching proposals and open counts.
+  await matchImportedSkattekonto(ctx.supabase, ctx.companyId, ctx.userId)
   const proposals = await refreshSkattekontoProposals(ctx.supabase, ctx.companyId, account)
   if (proposals.proposed > 0 || proposals.cleared > 0) {
     log.info('proposals refreshed', { companyId: ctx.companyId, ...proposals })

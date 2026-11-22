@@ -162,6 +162,7 @@ export async function generateViewport(): Promise<Viewport> {
   };
 }
 
+/** Render locale, branding and native theme bootstrap before the application hydrates. */
 export default async function RootLayout({
   children,
 }: Readonly<{
@@ -210,6 +211,8 @@ export default async function RootLayout({
       }
     >
       <head>
+        {/* Native themes own the palette before React hydrates. */}
+        <meta name="darkreader-lock" />
         <link rel="apple-touch-icon" href={branding.appleTouchIconPath} />
         {/* Tab icon: the brand's dedicated square favicon when set, else the
             logo (a wide lockup squeezed to 16px, but better than the default
@@ -229,7 +232,7 @@ export default async function RootLayout({
             <BrandProvider brand={brand ? toPublicBrand(brand) : null}>
               <ThemeProvider
                 attribute="class"
-                defaultTheme="light"
+                defaultTheme="system"
                 enableSystem
                 disableTransitionOnChange
                 nonce={nonce}

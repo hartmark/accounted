@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 
 // Mock the two dependencies so we test the ORCHESTRATION logic (confidence
 // gating, near-tie margin, cross-invoice voucher exclusivity, consumed-voucher
@@ -448,10 +448,88 @@ describe('reconcileSupplierInvoiceVouchers: a voucher that cites another invoice
     expect(res.links[0]).toMatchObject({ supplier_invoice_id: 'i1', journal_entry_id: 'v-493' })
   })
 
+  it('does not auto-link another Bokio invoice even after this invoice date', async () => {
+    queue([inv({ id: 'i1', invoiceDate: '2026-10-14', due: '2026-11-01' })])
+    mFind.mockResolvedValueOnce([
+      cand({ je: 'v-old', date: '2026-10-15', confidence: 0.99,
+        desc: 'Leverantörsfaktura: Leverantör AB - 1569693102 - Pension' }),
+    ] as never)
+    const res = await run()
+    expect(res.autoLinked).toBe(0)
+    expect(res.review[0]?.reason).toBe('names_other_invoice')
+    expect(mLink).not.toHaveBeenCalled()
+  })
+
+  it('compares Bokio references with the supplier number, never the Fortnox number', () => {
+    const voucher = { description: 'Leverantörsfaktura: Livförsäkringsbolaget Skandia Ömse - 1569693102 - Pensionsförsäkring' }
+    expect(citesOtherInvoice(voucher, { supplier_invoice_number: '1611133602' })).toBe(true)
+    expect(citesOtherInvoice(voucher, { supplier_invoice_number: '1569693102', fortnox_number: '493' })).toBe(false)
+    expect(citesOtherInvoice(voucher, { fortnox_number: '493' })).toBe(false)
+    expect(citesOtherInvoice({ description: 'Levbet Leverantör AB (487)' },
+      { supplier_invoice_number: '487', fortnox_number: '493' })).toBe(true)
+  })
+
   it('decides nothing without a number on both sides', () => {
     expect(citesOtherInvoice({ description: 'Levbet Leverantör AB (487)' }, {})).toBe(false)
     expect(citesOtherInvoice({ description: 'Levbet Leverantör AB' }, { fortnox_number: '493' })).toBe(false)
     expect(citesOtherInvoice({ description: 'Levbet Leverantör AB (493)' }, { fortnox_number: '493' })).toBe(false)
     expect(citesOtherInvoice({ description: 'Levbet Leverantör AB (487)' }, { fortnox_number: '493' })).toBe(true)
+
+  })
+})
+
+
+describe('provider-confirmed unpaid invoices', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mFind.mockReset(); mLink.mockReset()
+    vi.useFakeTimers().setSystemTime(new Date('2026-11-07T12:00:00Z'))
+  })
+  afterEach(() => vi.useRealTimers())
+  const importOpen = () => reconcileSupplierInvoiceVouchers({
+    supabase: {} as never, companyId: 'c1', userId: 'u1', dryRun: true, sourceUnpaidInvoiceIds: ['i1'],
+  })
+
+  it.each(['2026-11-30', '2026-11-07'])('keeps an open invoice due %s without searching older payments', async due => {
+    queue([inv({ id: 'i1', total: 1499, due })])
+    const result = await importOpen()
+    expect(result.review).toEqual([])
+    expect(result.links).toEqual([])
+    expect(result.unmatched).toBe(1)
+    expect(mFind).not.toHaveBeenCalled()
+    expect(mLink).not.toHaveBeenCalled()
+  })
+  it('reports an overdue balance even when there are no voucher candidates', async () => {
+    queue([inv({ id: 'i1', total: 1499, due: '2026-11-06' })])
+    const result = await importOpen()
+    expect(result.review).toEqual([expect.objectContaining({ reason: 'overdue_unpaid', candidates: [] })])
+    expect(result.links).toEqual([])
+    expect(mFind).not.toHaveBeenCalled()
+    expect(mLink).not.toHaveBeenCalled()
+  })
+  it('warns about the outstanding part of a partly paid overdue invoice', async () => {
+    queue([inv({ id: 'i1', status: 'partially_paid', total: 1499, remaining: 500, due: '2026-11-06' })])
+    expect((await importOpen()).review[0]?.reason).toBe('overdue_unpaid')
+    expect(mFind).not.toHaveBeenCalled()
+  })
+  it('does not resurrect a warning for a payment recorded since the source snapshot', async () => {
+    queue([inv({ id: 'i1', status: 'paid', remaining: 0, due: '2026-11-01' })])
+    expect((await importOpen()).review).toEqual([])
+    expect(mFind).not.toHaveBeenCalled()
+  })
+  it('does not treat credit notes as overdue payables', async () => {
+    queue([inv({ id: 'i1', isCredit: true, due: '2026-11-01' })])
+    expect((await importOpen()).review).toEqual([])
+  })
+  it.each(['2026-11-07T23:30:00Z', '2026-07-07T22:30:00Z'])('uses Swedish calendar days at %s', async now => {
+    vi.setSystemTime(new Date(now))
+    queue([inv({ id: 'i1', due: now.slice(0, 10) })])
+    expect((await importOpen()).review[0]?.reason).toBe('overdue_unpaid')
+  })
+  it('preserves voucher matching when the provider did not confirm the balance', async () => {
+    queue([inv({ id: 'unknown', due: '2026-11-30' })])
+    mFind.mockResolvedValueOnce([cand({ je: 'possible', confidence: 0.7 })] as never)
+    expect((await importOpen()).review[0]?.reason).toBe('low_confidence')
+    expect(mFind).toHaveBeenCalledOnce()
   })
 })

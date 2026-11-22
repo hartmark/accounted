@@ -1,3 +1,4 @@
+vi.mock('@/lib/auth/require-write',()=>({requireWritePermission:vi.fn().mockResolvedValue({ok:true})}))
 /**
  * Provider SIE files stay on the server.
  *
@@ -38,7 +39,7 @@ vi.mock('../lib/sie-fetcher', () => ({
   fetchProviderSieFiles: vi.fn(),
   getAllowedFiscalYears: vi.fn(),
   FiscalYearSelectionError: class FiscalYearSelectionError extends Error {},
-  MAX_SELECTED_FISCAL_YEARS: 6,
+  MAX_SELECTED_FISCAL_YEARS: 32,
 }))
 
 vi.mock('../lib/import-assets', () => ({ fetchFortnoxAssetPreview: vi.fn().mockResolvedValue(null) }))

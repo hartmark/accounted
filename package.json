@@ -39,7 +39,12 @@
     "test:sim": "SIM_TESTS=1 vitest run --project sim",
     "local:up": "bash scripts/local/up.sh",
     "local:check": "tsx scripts/local/check.ts",
-    "local:down": "tsx scripts/local/down.ts"
+    "local:down": "tsx scripts/local/down.ts",
+    "test:e2e": "node scripts/e2e/run.mjs test",
+    "test:e2e:prepare": "node scripts/e2e/run.mjs prepare",
+    "test:e2e:check": "node scripts/e2e/run.mjs check",
+    "test:e2e:reset": "node scripts/e2e/run.mjs reset",
+    "test:e2e:down": "node scripts/e2e/run.mjs down"
   },
   "dependencies": {
     "@ai-sdk/openai-compatible": "2.0.69",
@@ -124,6 +129,7 @@
     "tailwindcss": "^4",
     "tsx": "4.20.5",
     "typescript": "^5",
-    "vitest": "^4.1.12"
+    "vitest": "^4.1.12",
+    "@playwright/test": "1.65.0"
   }
 }

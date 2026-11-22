@@ -213,9 +213,9 @@ describe('the review a finished import stops for', () => {
     const { status, reads, mock } = await longReview(repeated('a'), [repeated('a'), repeated('b'), repeated('c', '23502')])
     expect(status?.review).toEqual({ total: 600, acceptable: true, unchanged: true, truncated: true, staleOutsideYears: 0 })
     // The unlisted records are read for their codes only, in this company's job.
-    expect(reads).toEqual(['id,resource,source_id,error_code,error_phase,target_id,receipt', 'id,payload', 'id,error_code,receipt'])
-    expect(mock.findCalls('migration_job_chunks', 'eq').filter(args => args[0] === 'company_id')).toHaveLength(3)
-    expect(mock.findCalls('migration_job_chunks', 'eq').filter(args => args[0] === 'job_id' && args[1] === jobId)).toHaveLength(3)
+    expect(reads).toEqual(['id,resource,source_id,error_code,error_phase,target_id,receipt', 'id,payload', 'id,error_code,receipt','id,resource,source_id,target_id,payload,receipt','resource,receipt'])
+    expect(mock.findCalls('migration_job_chunks', 'eq').filter(args => args[0] === 'company_id')).toHaveLength(5)
+    expect(mock.findCalls('migration_job_chunks', 'eq').filter(args => args[0] === 'job_id' && args[1] === jobId)).toHaveLength(5)
   })
   it.each([
     ['was never retried', repeated('z', 'MIGRATION_INVOICE_NUMBER_TAKEN', null)],
@@ -228,6 +228,6 @@ describe('the review a finished import stops for', () => {
   it('does not read the unlisted records when a listed one already keeps the retry', async () => {
     const { status, reads } = await longReview(repeated('a', '23502', null), [])
     expect(status?.review).toEqual({ total: 600, acceptable: true, unchanged: false, truncated: true, staleOutsideYears: 0 })
-    expect(reads).toHaveLength(2)
+    expect(reads).toHaveLength(4)
   })
 })

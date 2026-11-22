@@ -2,6 +2,9 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { fetchAllRows } from '@/lib/supabase/fetch-all'
 import { roundOre } from '@/lib/money'
 import { dbError } from '@/lib/errors/db-error'
+import { fetchEntryLines, type EntryLinesQuery } from '@/lib/bookkeeping/entry-lines'
+import { isActiveLedgerAccount } from './general-ledger-activity'
+
 import { getOpeningBalances } from './opening-balances'
 import { arrangeLedgerRows, type LedgerRowSort } from './general-ledger-rows'
 
@@ -86,6 +89,9 @@ export async function generateGeneralLedger(
      *  (parseReportDateRange). */
     fromDate?: string
     toDate?: string
+    /** Also retain ledger accounts with zero balances and no lines in the
+     * selected range, including accounts used elsewhere in the fiscal year. */
+    includeInactive?: boolean
   }
 ): Promise<GeneralLedgerReport> {
   const dimensionFilter =
@@ -166,9 +172,11 @@ export async function generateGeneralLedger(
   for (const line of rawLines) {
     const accNum = line.account_number
 
+    if (options?.includeInactive && !accountLines.has(accNum)) accountLines.set(accNum, [])
     if (toDate && line.entry_date > toDate) continue
     if (fromDate && line.entry_date < fromDate) {
       preRangeMovements.set(accNum, (preRangeMovements.get(accNum) || 0) + lineDebit(line) - lineCredit(line))
+
       continue
     }
 
@@ -189,7 +197,8 @@ export async function generateGeneralLedger(
 
   // Include accounts that carry a balance into the range but have no lines in it
   for (const [accNum, balance] of effectiveOpening) {
-    if (!accountLines.has(accNum) && Math.abs(balance) > 0.005) {
+    const carriesBalance = isActiveLedgerAccount({ closing_balance: roundOre(balance), lines: [] })
+    if (!accountLines.has(accNum) && (options?.includeInactive || carriesBalance)) {
       accountLines.set(accNum, [])
     }
   }
@@ -337,6 +346,7 @@ export interface GeneralLedgerAccountPage {
 }
 
 interface LedgerScopeOptions {
+  includeInactive?:boolean
   dimensions?: Record<string, string>
   fromDate?: string
   toDate?: string
@@ -449,6 +459,7 @@ export async function generateGeneralLedgerOverview(
 
   // The accounts with lines in the window, and those carrying a balance into it.
   const accountNumbers = new Set<string>(lineCount.keys())
+  if(options?.includeInactive) for(const account of names) accountNumbers.add(account.account_number)
   for (const [accNum, balance] of opening) {
     if (Math.abs(balance) > 0.005) accountNumbers.add(accNum)
   }

@@ -1211,4 +1211,31 @@ describe('a fiscal year an SIE re-sync replaced', () => {
     expect(result.reports[0].reason).toContain('more than one verifikat')
     expect(mock.calls.filter((c) => c.method === 'update')).toHaveLength(0)
   })
+
+})
+
+
+it.each([false, true])('resolves the active replacement when the same source ref also has a reversed original: bounded=%s', async bounded => {
+  queue({
+    vouchers: [{ ...voucher({ id: 'old' }), status: 'reversed', reversed_by_id: 'storno' },
+      { ...voucher({ id: 'new' }), status: 'posted', reversed_by_id: null }],
+    entries: [{ id: 'new', status: 'posted', reversed_by_id: null }],
+    lines: customerLines('new'), supplierRefs: [], customerRefs: [],
+  })
+  const result = await linkMigratedRegistrationVouchers({ supabase: mock.supabase as unknown as SupabaseClient,
+    companyId: COMPANY, invoices: [input({ invoiceId: 'invoice', kind: 'customer' })], dryRun: true, bounded })
+  expect(result.reports[0]).toMatchObject({ outcome: 'linked', journalEntryId: 'new' })
+  expect(mock.findCalls('journal_entries', 'select')[0][0]).toContain('status, reversed_by_id')
+  expect(updateCalls('invoices')).toHaveLength(0)
+})
+
+
+it('does not count a reversed original still marked posted as an active duplicate', async () => {
+  queue({
+    vouchers: [{ ...voucher({ id: 'old' }), status: 'posted', reversed_by_id: 'storno' },
+      { ...voucher({ id: 'new' }), status: 'posted', reversed_by_id: null }],
+    entries: [{ id: 'new', status: 'posted' }], lines: customerLines('new'), supplierRefs: [], customerRefs: [],
+  })
+  const result = await run([input({ invoiceId: 'invoice', kind: 'customer' })], true)
+  expect(result.reports[0]).toMatchObject({ outcome: 'linked', journalEntryId: 'new' })
 })

@@ -2,6 +2,8 @@
 
 import { Fragment, useState, useEffect, useCallback, useMemo, useRef, type ReactNode } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
+import { ResponsiveTable } from '@/components/ui/responsive-table'
+
 import { useTranslations } from 'next-intl'
 import {
   DataList,
@@ -1610,7 +1612,8 @@ export default function JournalEntryList({
           )
         )}
 
-        <div className="-mx-2 overflow-x-auto">
+        <ResponsiveTable>
+
           <table className="w-full border-collapse text-[13px]">
             <thead>
               <tr>
@@ -1861,8 +1864,9 @@ export default function JournalEntryList({
                       </td>
                     </tr>
                     {isExpanded && (
-                      <tr data-no-stagger>
-                        <td colSpan={6} className="border-b-hairline p-0">
+                      <tr data-no-stagger data-responsive-detail-row>
+                        <td colSpan={6} className="border-b border-border p-0">
+
                           <RowFoldout>
                             <div className="px-1 pb-6 pt-1 sm:pl-9 sm:pr-4">
                               {lines.length === 0 ? (
@@ -1967,7 +1971,7 @@ export default function JournalEntryList({
               })}
             </tbody>
           </table>
-        </div>
+        </ResponsiveTable>
       </div>
       )}
 

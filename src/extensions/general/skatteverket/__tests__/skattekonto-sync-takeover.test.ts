@@ -1,3 +1,7 @@
+import { matchImportedSkattekonto } from '../lib/skattekonto-import-match'
+vi.mock('../lib/skattekonto-import-match', () => ({
+  matchImportedSkattekonto: vi.fn().mockResolvedValue({ considered: 0, linked: 0, skipped: 0, failed: false }),
+}))
 /**
  * Tests for the sync-time takeover of file-imported rows.
  *
@@ -102,6 +106,7 @@ describe('syncSkattekonto: takeover of file-imported rows', () => {
     enqueue({ data: null }) // upsert
 
     await syncSkattekonto(makeCtx())
+    expect(matchImportedSkattekonto).toHaveBeenCalledWith(supabase, 'company-1', 'user-1')
 
     const updates = findCalls('skattekonto_transactions', 'update')
     expect(updates).toHaveLength(1)

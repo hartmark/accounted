@@ -1,3 +1,4 @@
+import { planSIEResync, type SIEResyncPlan } from './sie-resync'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { CreateJournalEntryInput } from '@/types'
 import { fetchAllRows } from '@/lib/supabase/fetch-all'
@@ -366,6 +367,16 @@ export async function prepareSIEJob(supabase: SupabaseClient, job: SIEJob, deadl
   const input = jobInput(job)
   const snapshot = await snapshotSource(supabase,job,deadline)
   if (!snapshot) return false
+  const incremental = input.options.onExistingPeriod === 'incremental'
+  if (incremental && !job.manifest.incrementalPlan) {
+    const fullSource = parseSIEFile(await readSIEJobSource(supabase,job))
+    applySIEFiscalYear(fullSource, input.fiscalYear)
+    const plan = await planSIEResync(supabase,job.company_id,job.execution_actor_id ?? job.user_id,
+      fullSource,input.mappings,input.options.voucherSeries)
+    if (!plan) throw new SIEJobValidationError('Tidigare import kunde inte verifieras för omsynkningen.')
+    await checkpointProgress(supabase,job,{...job.manifest,incrementalPlan:plan},job.prepared_through)
+  }
+  const newOrdinals = new Set((job.manifest.incrementalPlan as SIEResyncPlan | undefined)?.newOrdinals ?? [])
   const accountMap = mappingsToMap(input.mappings)
   validateSIEReportingMappings(snapshot.parsed,accountMap,input.options)
   // The IB difference lands on the form's result-closing account (2099 AB,
@@ -418,6 +429,8 @@ export async function prepareSIEJob(supabase: SupabaseClient, job: SIEJob, deadl
         possibleDuplicatesSkipped:counts.possibleDuplicatesSkipped+selected.possibleDuplicatesSkipped,
         possibleDuplicatesIncluded:counts.possibleDuplicatesIncluded+selected.possibleDuplicatesIncluded}
     }
+    if (incremental) entries = entries.filter(entry => newOrdinals.has(entry.sourceOrdinal))
+
     totals.openingEntries = (totals.openingEntries ?? 0)+entries.filter(entry => entry.sourceType === 'opening_balance').length
     if (totals.openingEntries > 1) throw new SIEJobValidationError('Filen innehåller flera ingående balansverifikationer. Granska dem före import.')
     const summary: PreparedSummary = {entries:entries.length,skipped:prepared?.skippedDetails ?? [],movements:[],firstChunk:chunkNo,chunkCount:0}
@@ -506,14 +519,15 @@ export async function prepareSIEJob(supabase: SupabaseClient, job: SIEJob, deadl
       openingBalanceSplitRefused = opening.splitRefused
     }
   }
-  const adjustment = adjustmentCount ? buildSIEMigrationAdjustmentEntry(job.fiscal_period_id,parsed,accountMap,movements,totals.skippedSample,adjustmentCount,
+  const adjustment = adjustmentCount && !incremental ? buildSIEMigrationAdjustmentEntry(job.fiscal_period_id,parsed,accountMap,movements,totals.skippedSample,adjustmentCount,
     new Map(totals.resultClosingMovements ?? [])) : null
   if (adjustment?.input) finalEntries.push(toPrepared(adjustment.input,job,finalOrdinals.adjustment,accountIds))
   assertSIEReportingAccounts(finalEntries.flatMap(entry => entry.lines.map(line => line.account_number)))
   if (append && totals.entries === 0) {
     throw new SIEJobValidationError(appendNothingNewRefusal(totals.append?.present ?? 0,totals.append?.possibleDuplicatesSkipped ?? 0).message)
   }
-  if (input.options.importTransactions && snapshot.parsed.stats.totalVouchers > 0 && totals.entries === 0 && !finalEntries.length) {
+  if (input.options.importTransactions && snapshot.parsed.stats.totalVouchers > 0 && !incremental && totals.entries === 0 && !finalEntries.length) {
+
     throw new SIEJobValidationError('Importen skulle skapa 0 verifikationer. Granska kontomappningen och filen.')
   }
   let finalChunk = 0

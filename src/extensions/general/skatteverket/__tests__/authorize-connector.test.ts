@@ -84,6 +84,7 @@ const ctx = {
 beforeEach(() => {
   vi.clearAllMocks()
   process.env.NEXT_PUBLIC_APP_URL = 'https://instans.example.se'
+  delete process.env.SKATTEVERKET_OAUTH_STATE_NAMESPACE
   delete process.env.NEXT_PUBLIC_SKV_OAUTH_BASE_URL
   mockNewId.mockReturnValue('state-fixed')
   mockResolveOrigin.mockResolvedValue('https://instans.example.se')
@@ -209,6 +210,34 @@ describe('skatteverket /authorize: direct mode', () => {
     )
     // Expired rows are swept on the way in, best-effort.
     expect(mockPurge).toHaveBeenCalledTimes(1)
+  })
+
+  it('routes a shared callback by namespace while retaining the local origin and PKCE', async () => {
+    vi.stubEnv('SKATTEVERKET_OAUTH_STATE_NAMESPACE', 'accounted-dev')
+    process.env.NEXT_PUBLIC_SKV_OAUTH_BASE_URL = 'https://registered.example'
+    mockResolveOrigin.mockResolvedValue('https://dev.example')
+
+    const res = await authorizeRoute().handler(
+      new Request('https://dev.example/api/extensions/ext/skatteverket/authorize'),
+      ctx,
+    )
+
+    expect(res.status).toBe(307)
+    expect(buildAuthorizeUrl).toHaveBeenCalledWith(
+      'https://registered.example/api/extensions/ext/skatteverket/callback',
+      'instance.accounted-dev.state-fixed',
+      { codeChallenge: 'pkce-c' },
+    )
+    expect(mockCreateFlow).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        id: 'instance.accounted-dev.state-fixed',
+        origin: 'https://dev.example',
+        redirectUri: 'https://registered.example/api/extensions/ext/skatteverket/callback',
+        codeVerifier: 'pkce-v',
+      }),
+    )
+    expect(storeTokens).not.toHaveBeenCalled()
   })
 
   it('drops a return_to that is not an in-app path', async () => {

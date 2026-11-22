@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { escapeRegExp } from '../lib/escape-regexp.mjs'
 /**
  * Guard: "today" not read from the one definition.
  *
@@ -139,7 +140,7 @@ function wrapperNames(src) {
   for (const m of src.matchAll(WRAPPER_FN)) names.add(m[1])
   for (const m of src.matchAll(WRAPPER_ARROW)) names.add(m[1])
   for (const m of src.matchAll(DATE_FN)) {
-    const reads = (field) => new RegExp(String.raw`\b${m[3].replace(/\$/g, '\\$')}\.get(?:UTC)?${field}\(\)`).test(m[4])
+    const reads = (field) => new RegExp(String.raw`\b${escapeRegExp(m[3])}\.get(?:UTC)?${field}\(\)`).test(m[4])
     if (reads('FullYear') && reads('Month') && reads('Date')) names.add(m[2])
   }
   return names
@@ -178,7 +179,7 @@ function clockSiteOffsets(src, file, exportedWrappers) {
   for (const m of src.matchAll(CALENDAR_READ_ON_FALLBACK)) offsets.push(m.index)
   const wrappers = new Set(['toIsoDate', ...wrapperNames(src), ...importedWrappers(src, file, exportedWrappers)])
   for (const wrapper of wrappers) {
-    const call = new RegExp(String.raw`(?<![\w$.])${wrapper.replace(/\$/g, '\\$')}\(\s*(?:new Date\(\s*\)|(\.?)(${IDENT}))\s*\)`, 'g')
+    const call = new RegExp(String.raw`(?<![\w$.])${escapeRegExp(wrapper)}\(\s*(?:new Date\(\s*\)|(\.?)(${IDENT}))\s*\)`, 'g')
     for (const m of src.matchAll(call)) {
       if (m[2] === undefined || isClock(m[2], false)) offsets.push(m.index)
     }
@@ -205,7 +206,7 @@ export function findUtcTodaySites(root) {
       const file = path.relative(root, full).split(path.sep).join('/')
       const src = fs.readFileSync(full, 'utf8')
       sources.set(file, src)
-      const exported = [...wrapperNames(src)].filter((name) => new RegExp(String.raw`export\s+(?:function|const|let)\s+${name.replace(/\$/g, '\\$')}\b`).test(src))
+      const exported = [...wrapperNames(src)].filter((name) => new RegExp(String.raw`export\s+(?:function|const|let)\s+${escapeRegExp(name)}\b`).test(src))
       if (exported.length > 0) exportedWrappers.set(file.replace(/\.tsx?$/, ''), new Set(exported))
     }
   }

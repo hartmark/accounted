@@ -154,6 +154,11 @@ export function bokioUnit(line: Record<string, unknown>): string | undefined {
       ? custom.trim().replace(/\s+/g, ' ').slice(0, BOKIO_CUSTOM_UNIT_MAX_LENGTH).trim()
       : '';
   }
+  return normalizeBokioUnitType(unitType);
+}
+
+/** Compare legacy enum values with their stored codes without changing custom text. */
+export function normalizeBokioUnitType(unitType: string): string {
   return Object.prototype.hasOwnProperty.call(BOKIO_UNIT_TYPES, unitType)
     ? BOKIO_UNIT_TYPES[unitType]
     : unitType;

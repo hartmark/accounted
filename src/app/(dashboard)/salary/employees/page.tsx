@@ -200,7 +200,12 @@ export default function EmployeesPage() {
           onOpenChange={(open) => {
             if (!open) closeNewEmployee()
           }}
-          onCreated={closeNewEmployee}
+          onCreated={() => {
+            closeNewEmployee()
+            void refreshEmployees()
+            router.refresh()
+          }}
+
         />
       )}
     </div>

@@ -36,6 +36,9 @@ import {
 } from './supplier-voucher-matching'
 import { CONFIDENCE } from './invoice-matching'
 import { counterpartySearchTerms } from './duplicate-payment-guard'
+import { todayIsoStockholm } from '@/lib/dates/iso'
+import { isOverduePayable } from '@/lib/supplier-invoices/lifecycle'
+
 import type { SupplierInvoice, Supplier } from '@/types'
 import { MATCHABLE_SUPPLIER_INVOICE_STATUSES } from '@/lib/bookkeeping/matchable-statuses'
 import type { ScopeFreeLinkBasis } from '@/lib/links/link-basis'
@@ -102,6 +105,7 @@ type ReconcileInvoiceRow = SupplierInvoice & {
 }
 
 export type ReconcileReviewReason =
+  | 'overdue_unpaid' // source confirms outstanding balance after the due date
   | 'multiple_candidates' // ≥2 candidates within the auto-link margin
   | 'low_confidence' // best candidate below AUTO_LINK_MIN_CONFIDENCE
   | 'amount_exceeds_remaining' // best candidate would overpay the invoice
@@ -133,9 +137,9 @@ export interface ReconcileResult {
   scanned: number
   /** Invoices auto-linked to a voucher (or that would be, when dryRun). */
   autoLinked: number
-  /** Invoices with candidate(s) but not safe to auto-link: need manual review. */
+  /** Uncertain payment matches or source-confirmed overdue balances needing review. */
   ambiguous: number
-  /** Invoices with no eligible voucher candidate at all. */
+  /** Invoices left open without a voucher, including source-confirmed unpaid invoices. */
   unmatched: number
   /** True when more payables existed than `maxInvoices` and the rest were skipped. */
   capped: boolean
@@ -154,6 +158,8 @@ export interface ReconcileOptions {
   maxInvoices?: number
   /** A durable import's current batch. Omitted preserves the maintenance scan. */
   invoiceIds?: string[]
+  /** Provider-confirmed open balances: retain them, review only once overdue. */
+  sourceUnpaidInvoiceIds?: readonly string[]
   onProgress?: (done: number, total: number) => void
 }
 
@@ -177,6 +183,8 @@ export function paidBeforeInvoice(
 
 /** The number a Fortnox payment voucher cites last in its text: "Levbet Leverantör AB (487)". */
 const CITED_INVOICE_NUMBER = /\((\d+)\)\s*$/
+/** Bokio SIE descriptions name the supplier invoice between spaced separators. */
+const BOKIO_INVOICE_NUMBER = /^Leverantörsfaktura:\s+.+?\s+-\s+([A-Za-z0-9][A-Za-z0-9/-]*)\s+-/i
 
 /**
  * Whether the voucher text cites another invoice than this one. Fortnox ends
@@ -186,16 +194,20 @@ const CITED_INVOICE_NUMBER = /\((\d+)\)\s*$/
  * name, dated after this invoice arrived, passes every other check and marked
  * an unpaid invoice as paid (PH 264). A voucher that cites another number is
  * that invoice's payment; an unattended link never takes it, a person still
- * can, from the review list. No number on either side decides nothing.
+ * can, from the review list. Bokio SIE uses the supplier invoice number
+ * between spaced separators instead. No number on either side decides nothing.
  */
 export function citesOtherInvoice(
   candidate: Pick<SupplierVoucherCandidate, 'description'>,
-  invoice: { fortnox_number?: string | null },
+  invoice: { fortnox_number?: string | null; supplier_invoice_number?: string | null },
 ): boolean {
-  const own = invoice.fortnox_number?.trim()
-  if (!own) return false
-  const cited = CITED_INVOICE_NUMBER.exec(candidate.description ?? '')?.[1]
-  return !!cited && cited !== own
+  const text = candidate.description ?? ''
+  const bokioNumber = BOKIO_INVOICE_NUMBER.exec(text)?.[1]
+  // Fortnox cites its internal number; Bokio cites the supplier invoice number.
+  // Keep these namespaces separate even when both happen to be present.
+  const own = (bokioNumber ? invoice.supplier_invoice_number : invoice.fortnox_number)?.trim()
+  const cited = bokioNumber ?? CITED_INVOICE_NUMBER.exec(text)?.[1]
+  return !!own && !!cited && cited !== own
 }
 
 /**
@@ -222,6 +234,8 @@ export async function reconcileSupplierInvoiceVouchers(
 ): Promise<ReconcileResult> {
   const { supabase, companyId, userId, dryRun = false } = opts
   const maxInvoices = opts.maxInvoices ?? DEFAULT_MAX_INVOICES
+  const sourceUnpaid = new Set(opts.sourceUnpaidInvoiceIds)
+  const today = todayIsoStockholm()
 
   const result: ReconcileResult = {
     scanned: 0,
@@ -299,6 +313,19 @@ export async function reconcileSupplierInvoiceVouchers(
 
   for (const invoice of toProcess) {
     result.scanned++
+    if (sourceUnpaid.has(invoice.id)) {
+      // Use the current local balance/status, not just the source snapshot:
+      // a payment recorded since import must not be turned back into a warning.
+      if (isOverduePayable(invoice, today)) {
+        result.ambiguous++
+        result.review.push({ supplier_invoice_id: invoice.id,
+          supplier_invoice_number: invoice.supplier_invoice_number ?? null,
+          reason: 'overdue_unpaid', candidates: [] })
+      } else {
+        result.unmatched++
+      }
+      continue
+    }
     const candidates = await findMatchingVouchersForSupplierInvoice(
       supabase,
       companyId,

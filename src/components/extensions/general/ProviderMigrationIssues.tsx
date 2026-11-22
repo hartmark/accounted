@@ -1,5 +1,8 @@
 'use client'
 
+import MigrationRecordActions from './MigrationRecordActions'
+import type { ProviderMigrationStatus } from '@/lib/providers/migration-contract'
+import MigrationDifferenceTable from './MigrationDifferenceTable'
 import { useState } from 'react'
 import Link from 'next/link'
 import { useTranslations } from 'next-intl'
@@ -46,7 +49,9 @@ function groupByReason(issues: ProviderMigrationIssue[]): ReasonGroup[] {
  * review before acceptance and by the result after it, so an accepted import
  * keeps listing exactly what it left out.
  */
-export default function ProviderMigrationIssues({ issues, provider, total, truncated }: {
+export default function ProviderMigrationIssues({ issues, provider, total, truncated, jobId, onUpdated }: {
+  jobId?: string
+  onUpdated?: (status: ProviderMigrationStatus) => void
   issues: ProviderMigrationIssue[]
   provider: string | null | undefined
   /** Records that need attention in the whole job, listed or not. */
@@ -66,14 +71,14 @@ export default function ProviderMigrationIssues({ issues, provider, total, trunc
         <h3 className="text-xs font-medium text-muted-foreground">
           {t('ext_arcim_review_section_missing', { count: missingCount })}
         </h3>
-        {missing.map(group => <ReasonBlock key={group.key} group={group} provider={providerName} />)}
+        {missing.map(group => <ReasonBlock key={group.key} group={group} provider={providerName} jobId={jobId} onUpdated={onUpdated} />)}
       </section>}
       {imported.length > 0 && <section className="space-y-3">
         <h3 className="text-xs font-medium text-muted-foreground">
           {t('ext_arcim_review_section_imported', { count: importedCount })}
         </h3>
         <p className="text-[13px] text-muted-foreground">{t('ext_arcim_review_section_imported_note')}</p>
-        {imported.map(group => <ReasonBlock key={group.key} group={group} provider={providerName} />)}
+        {imported.map(group => <ReasonBlock key={group.key} group={group} provider={providerName} jobId={jobId} onUpdated={onUpdated} />)}
       </section>}
       {truncated && <p className="text-[13px] text-muted-foreground">
         {t('ext_arcim_review_truncated', { shown: issues.length, total })}
@@ -82,7 +87,7 @@ export default function ProviderMigrationIssues({ issues, provider, total, trunc
   )
 }
 
-function ReasonBlock({ group, provider }: { group: ReasonGroup; provider: string }) {
+function ReasonBlock({ group, provider, jobId, onUpdated }: { group: ReasonGroup; provider: string; jobId?: string; onUpdated?: (status: ProviderMigrationStatus) => void }) {
   const t = useTranslations('extensions')
   const [expanded, setExpanded] = useState(false)
   const shown = expanded ? group.issues : group.issues.slice(0, VISIBLE_PER_REASON)
@@ -91,7 +96,7 @@ function ReasonBlock({ group, provider }: { group: ReasonGroup; provider: string
     <div className="space-y-2">
       <p className="text-sm">{t(`ext_arcim_review_reason_${group.reason}`, { provider })}</p>
       <ul className="divide-y divide-border border-y border-border">
-        {shown.map(issue => <IssueLine key={issue.id} issue={issue} />)}
+        {shown.map(issue => <IssueLine key={issue.id} issue={issue} jobId={jobId} onUpdated={onUpdated} />)}
       </ul>
       {hidden > 0 && <Button variant="ghost" onClick={() => setExpanded(true)}>
         {t('ext_arcim_review_more', { count: hidden })}
@@ -100,7 +105,7 @@ function ReasonBlock({ group, provider }: { group: ReasonGroup; provider: string
   )
 }
 
-function IssueLine({ issue }: { issue: ProviderMigrationIssue }) {
+function IssueLine({ issue, jobId, onUpdated }: { issue: ProviderMigrationIssue; jobId?: string; onUpdated?: (status: ProviderMigrationStatus) => void }) {
   const t = useTranslations('extensions')
   const label = issue.label
   const kind = t(`ext_arcim_review_record_${issue.resource}`)
@@ -136,6 +141,8 @@ function IssueLine({ issue }: { issue: ProviderMigrationIssue }) {
         {facts && <span className="tabular-nums text-muted-foreground">{facts}</span>}
       </div>
       {detail && <p className="mt-1 text-xs tabular-nums text-muted-foreground">{detail}</p>}
-    </li>
+    {issue.error_code === 'MIGRATION_SOURCE_CHANGED' && <MigrationDifferenceTable resource={issue.resource} differences={issue.differences} unavailable={issue.comparisonUnavailable} />}
+      {jobId && onUpdated && <MigrationRecordActions jobId={jobId} issue={issue} onUpdated={onUpdated} />}
+      </li>
   )
 }

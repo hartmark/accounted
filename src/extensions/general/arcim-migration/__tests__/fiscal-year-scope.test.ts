@@ -1,3 +1,4 @@
+vi.mock('@/lib/auth/require-write',()=>({requireWritePermission:vi.fn().mockResolvedValue({ok:true})}))
 import { describe, it, expect, beforeEach, afterEach, vi, type Mock } from 'vitest'
 import { createMockSupabase, createMockRequest, parseJsonResponse } from '@/tests/helpers'
 import type { ExtensionContext } from '@/lib/extensions/types'
@@ -47,7 +48,7 @@ vi.mock('../lib/sie-fetcher', () => ({
       super(`unknown ${unknownYears.join(', ')}`)
     }
   },
-  MAX_SELECTED_FISCAL_YEARS: 6,
+  MAX_SELECTED_FISCAL_YEARS: 32,
 }))
 
 // The Fortnox asset preview would otherwise go to the network.
@@ -76,7 +77,6 @@ import {
   fetchProviderSieFiles,
   getAllowedFiscalYears,
   FiscalYearSelectionError,
-  MAX_SELECTED_FISCAL_YEARS,
 } from '../lib/sie-fetcher'
 import { findOverlappingPeriodImports } from '@/lib/import/sie-import'
 
@@ -238,11 +238,12 @@ describe('GET /preview: every source year, with the default selection marked (#2
     expect(body.sieStats.fiscalYears).toEqual([CY])
   })
 
-  it('hands the picker the same cap /sie-data enforces', async () => {
+  it('advertises the server batch limit in the picker', async () => {
+
     const res = await handler('/preview')(request('/preview'), buildCtx())
     const { body } = await parseJsonResponse<{ maxSelectedYears: number }>(res)
 
-    expect(body.maxSelectedYears).toBe(MAX_SELECTED_FISCAL_YEARS)
+    expect(body.maxSelectedYears).toBe(32)
   })
 
   it('still lists the source years when nothing inside the default selection came back', async () => {
@@ -329,36 +330,13 @@ describe('GET /sie-data: the ticked years are fetched, the rest are named (#2211
     expect(body.omittedYears).toEqual([])
   })
 
-  it('accepts a selection at the cap and rejects one over it before any provider call', async () => {
-    const atCap = Array.from({ length: MAX_SELECTED_FISCAL_YEARS }, (_, i) => CY - i)
-    const overCap = [...atCap, CY - MAX_SELECTED_FISCAL_YEARS]
-
-    const ok = await handler('/sie-data')(
-      createMockRequest('http://localhost/api/extensions/ext/arcim-migration/sie-data', {
-        searchParams: { consentId: 'consent-1', years: atCap.join(',') },
-      }),
-      buildCtx(),
-    )
-    expect(ok.status).toBe(200)
-    expect((fetchProviderSieFiles as Mock).mock.calls[0][3]).toEqual({
-      years: [...atCap].sort((a, b) => a - b),
-    })
-
-    vi.clearAllMocks()
-    const rejected = await handler('/sie-data')(
-      createMockRequest('http://localhost/api/extensions/ext/arcim-migration/sie-data', {
-        searchParams: { consentId: 'consent-1', years: overCap.join(',') },
-      }),
-      buildCtx(),
-    )
-    const { status, body } = await parseJsonResponse<{ error: { code: string; message: string } }>(rejected)
-
-    expect(status).toBe(400)
-    expect(body.error.code).toBe('VALIDATION_ERROR')
-    expect(body.error.message).toContain(String(MAX_SELECTED_FISCAL_YEARS))
-    // Refused before the consent is even resolved: no provider work at all.
-    expect(fetchProviderSieFiles).not.toHaveBeenCalled()
-    expect(resolveConsent).not.toHaveBeenCalled()
+  it('accepts more than six selected years and forwards the full selection', async () => {
+    const years = Array.from({length:9},(_,i)=>CY-i)
+    const response = await handler('/sie-data')(createMockRequest('http://localhost/api/extensions/ext/arcim-migration/sie-data', {
+      searchParams:{consentId:'consent-1',years:years.join(',')},
+    }),buildCtx())
+    expect(response.status).toBe(200)
+    expect((fetchProviderSieFiles as Mock).mock.calls[0][3]).toEqual({years:years.slice().sort((a,b)=>a-b)})
   })
 
   it('rejects a ticked year the source does not have, as the fetcher reports it before any export', async () => {

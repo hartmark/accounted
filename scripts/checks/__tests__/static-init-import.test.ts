@@ -254,3 +254,9 @@ describe('static-init-import on the real tree', () => {
     expect(reach.lazyInitEntries.map((o) => o.entry)).toEqual(['instrumentation.ts'])
   }, 60_000)
 })
+
+// Comment contents must not form a backtracking search space for directive detection.
+it('handles repeated block-comment delimiters before a client directive',()=>{
+ const root=fixture({'components/Client.tsx':'/*'+'*//*'.repeat(20_000)+"*/\n'use client';\nimport {whenInitialized} from '@/lib/initialized'\n"})
+ expect(findStaticInitImports(root).length).toBeGreaterThan(0)
+})

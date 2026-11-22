@@ -1009,7 +1009,7 @@ export default function SupplierInvoiceDetailPage() {
       {/* The invoice head is one line of facts. The number is the title, the
           dates that moved are on the strip, so only the supplier and the
           document facts remain. */}
-      <div className="flex flex-wrap items-center gap-x-5 gap-y-1 text-[13px] text-muted-foreground" data-ph-mask>
+      <div className="grid grid-cols-1 gap-x-6 gap-y-2 text-[13px] text-muted-foreground sm:flex sm:flex-wrap sm:items-center" data-ph-mask>
         {invoice.supplier && (
           <Link href={`/suppliers/${invoice.supplier.id}`} className="text-foreground hover:underline">
             {invoice.supplier.name}
@@ -1235,26 +1235,26 @@ export default function SupplierInvoiceDetailPage() {
                 </label>
               </DefRow>
             )}
-            <DefRow label={t('paid_label')}>
+            <DefRow label={t('paid_label')} className="grid-cols-[minmax(0,1fr)_auto] items-baseline">
               <span className="tabular-nums">{formatCurrency(invoice.paid_amount, invoice.currency)}</span>
             </DefRow>
-            <DefRow label={t('remaining_label')}>
+            <DefRow label={t('remaining_label')} className="grid-cols-[minmax(0,1fr)_auto] items-baseline">
               <span className={cn('tabular-nums', invoice.status === 'partially_paid' && 'text-attn')}>
                 {formatCurrency(invoice.remaining_amount, invoice.currency)}
               </span>
             </DefRow>
             {payments.length > 0 && (
-              <DefRow label={t('payment_history_title')} className="items-baseline">
+              <div className="mt-5 space-y-2"><h3 className="text-sm text-muted-foreground">{t('payment_history_title')}</h3>
                 <ul className="divide-y divide-border">
                   {payments.map((p) => (
-                    <li key={p.id} className="flex flex-wrap items-center gap-x-4 gap-y-1 py-2 first:pt-0 last:pb-0">
+                    <li key={p.id} className="grid min-w-0 grid-cols-2 items-baseline gap-x-4 gap-y-2 py-3 first:pt-0 last:pb-0">
                       <span className="tabular-nums text-muted-foreground">{formatDate(p.payment_date)}</span>
-                      <span className="tabular-nums">{formatCurrency(p.amount, p.currency)}</span>
-                      {p.notes && <span className="min-w-0 truncate text-muted-foreground">{p.notes}</span>}
+                      <span className="text-right tabular-nums">{formatCurrency(p.amount, p.currency)}</span>
+                      {p.notes && <span className="col-span-2 min-w-0 break-words text-muted-foreground">{p.notes === 'Provider migration' ? t('payment_source_import') : p.notes}</span>}
                       {p.journal_entry_id && (
                         <Link
                           href={`/bookkeeping/${p.journal_entry_id}`}
-                          className="ml-auto text-xs text-muted-foreground hover:text-foreground hover:underline"
+                          className="text-xs text-foreground underline underline-offset-4"
                         >
                           {t('view_voucher')}
                         </Link>
@@ -1275,7 +1275,7 @@ export default function SupplierInvoiceDetailPage() {
                     </li>
                   ))}
                 </ul>
-              </DefRow>
+              </div>
             )}
           </DetailSection>
 

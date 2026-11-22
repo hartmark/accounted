@@ -1,6 +1,8 @@
 'use client'
 
 import type { ReactNode } from 'react'
+import { useAccounts } from '@/lib/reference-data/hooks'
+import { useBasReference } from '@/lib/bookkeeping/use-bas-reference'
 import { useTranslations } from 'next-intl'
 import { AccountNumber } from '@/components/ui/account-number'
 import { TOTAL_TD_CLASS, VTD_CLASS, VTH_CLASS } from '@/components/ui/dry-table'
@@ -75,7 +77,7 @@ export function lineTextAddsSomething(
 }
 
 /**
- * The read-only kontering of a verifikat: Konto (number and name), Text,
+ * The read-only kontering of a verifikat: Konto (number), description (account name and optional line text),
  * Debet, Kredit, and optionally a Summa row. One table for every surface
  * that shows the rows a booking posts or posted (the verifikat list foldout,
  * approval cards, payment and salary previews, the year-end closing preview),
@@ -97,6 +99,9 @@ export function VoucherLinesTable({
   className,
 }: VoucherLinesTableProps) {
   const tVoucher = useTranslations('voucher_lines')
+  useBasReference()
+  const { accounts } = useAccounts(false, { enabled: accountNames === undefined })
+  const companyNames = new Map(accounts.map(account => [account.account_number, account.account_name]))
   const head = (key: keyof typeof SWEDISH_HEADS) => (swedish ? SWEDISH_HEADS[key] : tVoucher(key))
   const moreRows = (count: number) =>
     swedish ? `+ ${count} ${count === 1 ? 'rad' : 'rader'} till` : tVoucher('more_rows', { count })
@@ -116,9 +121,9 @@ export function VoucherLinesTable({
                 wraps instead of pushing Debet and Kredit out of a narrow
                 review panel behind a hidden sideways scroll (crm#1232). Where
                 there is room the column still sizes to the name on one line. */}
-            <th className={VTH_CLASS}>{head('account')}</th>
-            <th className={VTH_CLASS}>{head('description')}</th>
-            <th className={cn(VTH_CLASS, 'text-right')}>{head('debit')}</th>
+            <th className={cn(VTH_CLASS, 'w-12 pr-2 whitespace-nowrap sm:w-16 sm:pr-4')}>{head('account')}</th>
+            <th className={cn(VTH_CLASS, 'pr-2 sm:pr-4')}>{head('description')}</th>
+            <th className={cn(VTH_CLASS, 'pr-2 text-right sm:pr-4')}>{head('debit')}</th>
             <th className={cn(VTH_CLASS, 'pr-0 text-right')}>{head('credit')}</th>
           </tr>
         </thead>
@@ -128,7 +133,7 @@ export function VoucherLinesTable({
             const credit = amountOf(line.credit_amount)
             const text = line.description?.trim() ?? ''
             const givenName = line.account_name || accountNames?.[line.account_number] || null
-            const accountName = givenName || (accountNames ? null : getAccountDescription(line.account_number)?.name)
+            const accountName = givenName || (accountNames ? null : companyNames.get(line.account_number) || getAccountDescription(line.account_number)?.name)
             const showText = lineTextAddsSomething(text, accountName, redundantTexts)
             const strike = line.struck ? 'line-through decoration-foreground/25' : undefined
             const amountCell = (amount: number) =>
@@ -142,21 +147,16 @@ export function VoucherLinesTable({
               ) : null
             return (
               <tr key={line.key ?? i} className={line.struck ? 'text-muted-foreground' : undefined}>
-                <td className={cn(VTD_CLASS, strike)}>
-                  {accountNames ? (
-                    <>
-                      <span className="font-mono text-sm">{line.account_number}</span>
-                      {givenName && <span className="ml-1">{givenName}</span>}
-                    </>
-                  ) : (
-                    <AccountNumber number={line.account_number} name={givenName || undefined} showName />
-                  )}
+                <td className={cn(VTD_CLASS, strike, 'w-12 pr-2 whitespace-nowrap sm:w-16 sm:pr-4')}>
+                  {accountNames ? <span className="font-mono text-sm">{line.account_number}</span>
+                    : <AccountNumber number={line.account_number} name={givenName || undefined} />}
                 </td>
-                <td className={cn(VTD_CLASS, 'text-muted-foreground')}>
-                  {showText && <span className={strike}>{text}</span>}
-                  {line.extra && <span className={cn(showText && 'ml-2')}>{line.extra}</span>}
+                <td className={cn(VTD_CLASS, 'min-w-0 pr-2 [overflow-wrap:anywhere] sm:pr-4')}>
+                  {accountName && <span className={strike}>{accountName}</span>}
+                  {showText && <span className={cn('block text-muted-foreground', strike)}>{text}</span>}
+                  {line.extra && <span className="block text-muted-foreground">{line.extra}</span>}
                 </td>
-                <td className={cn(VTD_CLASS, 'text-right tabular-nums whitespace-nowrap')}>{amountCell(debit)}</td>
+                <td className={cn(VTD_CLASS, 'pr-2 text-right tabular-nums whitespace-nowrap sm:pr-4')}>{amountCell(debit)}</td>
                 <td className={cn(VTD_CLASS, 'pr-0 text-right tabular-nums whitespace-nowrap')}>{amountCell(credit)}</td>
               </tr>
             )

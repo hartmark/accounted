@@ -158,3 +158,4 @@ again from Accounted.
 The new mapper also gives a part-paid sales invoice of any provider
 `partially_paid` (payment date empty, as on a native partial payment) instead
 of `sent`.
+

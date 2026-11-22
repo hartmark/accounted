@@ -370,7 +370,10 @@ export function arcimDocumentImportReducer(
       if (!supportsUnderlagImport(action.result.provider)) {
         return INITIAL_ARCIM_DOCUMENT_IMPORT_STATE
       }
-      if (action.result.scanned <= 0) {
+      if (action.result.scanned <= 0 || (
+        action.result.linked === 0 && action.result.unmatched === 0 &&
+        action.result.locked === 0 && action.result.failed === 0
+      )) {
         return {
           phase: 'empty',
           provider: action.result.provider,
@@ -382,7 +385,7 @@ export function arcimDocumentImportReducer(
       return {
         phase: 'offered',
         provider: action.result.provider,
-        found: action.result.scanned,
+        found: action.result.linked,
         result: action.result,
         problem: null,
       }
@@ -403,9 +406,10 @@ export function arcimDocumentImportReducer(
       return {
         ...state,
         phase: 'importing',
-        result: resumableDocumentImport(action.resumeFrom ?? null),
+        result: resumableDocumentImport(action.resumeFrom ?? null) ?? (state.result ? { ...state.result, dryRun:false, scanned:0, linked:0, skipped:0, failed:0, unmatched:0, locked:0, partial:false, nextCursor:null } : null),
         problem: null,
       }
+
     case 'import-progress':
       // Running totals after each server slice; the phase stays 'importing'
       // so the UI keeps its spinner and shows "x av y".
@@ -690,6 +694,8 @@ export async function requestArcimDocumentImport(
   fetcher: typeof fetch = fetch,
   cursor?: string,
   run?: string,
+  onProgress?: (result:ArcimDocumentImportResult)=>void,
+
 ): Promise<ArcimDocumentImportResult> {
   const response = await fetcher(ARCIM_DOCUMENT_IMPORT_ENDPOINT, {
     method: 'POST',
@@ -699,8 +705,13 @@ export async function requestArcimDocumentImport(
       dryRun,
       ...(cursor === undefined ? {} : { cursor }),
       ...(run === undefined ? {} : { run }),
+      ...(!dryRun && onProgress ? {progress:true} : {}),
     }),
+
   })
+  if(response.ok && response.headers.get('Content-Type')?.includes('text/event-stream')) {
+    return readDocumentImportProgress(response,onProgress)
+  }
   const payload = await response.json().catch(() => null)
 
   if (!response.ok) {
@@ -717,6 +728,36 @@ export async function requestArcimDocumentImport(
   }
 
   return normalizeDocumentImportResult(result)
+}
+
+/** Read incrementally, including UTF-8 text and events split across chunks. */
+async function readDocumentImportProgress(response:Response,onProgress?: (result:ArcimDocumentImportResult)=>void):Promise<ArcimDocumentImportResult> {
+  if(!response.body)throw new ArcimDocumentImportRequestError({code:null,requestId:null,reconnectRequired:false})
+  const reader=response.body.getReader(), decoder=new TextDecoder()
+  let buffer=''
+  try {
+    while(true){
+      const {done,value}=await reader.read()
+      buffer+=decoder.decode(value,{stream:!done})
+      let separator:RegExpExecArray|null
+      while((separator=/\r?\n\r?\n/.exec(buffer))){
+        const frame=buffer.slice(0,separator.index);buffer=buffer.slice(separator.index+separator[0].length)
+        const data=frame.split(/\r?\n/).filter(line=>line.startsWith('data:')).map(line=>line.slice(5).trimStart()).join('\n')
+        if(!data)continue
+        const event=JSON.parse(data) as {type:string;result?:unknown;payload?:unknown}
+        if(event.type==='error')throw new ArcimDocumentImportRequestError(problemFromPayload(event.payload))
+        if(!isDocumentImportResult(event.result))throw new Error('Invalid document progress')
+        const result=normalizeDocumentImportResult(event.result)
+        if(event.type==='complete')return result
+        if(event.type!=='progress')throw new Error('Unknown document progress event')
+        onProgress?.(result)
+      }
+      if(buffer.length>1_000_000 || done)throw new Error('Document progress ended without a result')
+    }
+  } catch(error) {
+    if(error instanceof ArcimDocumentImportRequestError)throw error
+    throw new ArcimDocumentImportRequestError({code:null,requestId:null,reconnectRequired:false})
+  } finally {await reader.cancel().catch(()=>{ /* Cancellation is cleanup after the result or failure was already delivered. */ });reader.releaseLock()}
 }
 
 /** Far above any real list: a guard against a server that never completes. */
@@ -743,7 +784,15 @@ export const DOCUMENT_IMPORT_RETRY_DELAYS_MS: readonly number[] = [2_000, 10_000
  * handled file instead of starting over. A server that keeps answering
  * "partial" without advancing (or past the round guard) is reported as a
  * failure, never as a completed import: the retry button resumes safely.
+
  */
+export async function runArcimDocumentDiscoveryToCompletion(
+  consentId: string,
+  fetcher: typeof fetch = fetch,
+): Promise<ArcimDocumentImportResult> {
+  return runDocumentImportToCompletion(consentId, true, { fetcher })
+}
+
 export async function runArcimDocumentImportToCompletion(
   consentId: string,
   options: {
@@ -752,6 +801,20 @@ export async function runArcimDocumentImportToCompletion(
     resumeFrom?: ArcimDocumentImportResult | null
     retryDelaysMs?: readonly number[]
     wait?: (ms: number) => Promise<void>
+  } = {},
+): Promise<ArcimDocumentImportResult> {
+  return runDocumentImportToCompletion(consentId, false, options)
+}
+
+async function runDocumentImportToCompletion(
+  consentId: string,
+  dryRun: boolean,
+  options: {
+    fetcher?: typeof fetch
+    resumeFrom?: ArcimDocumentImportResult | null
+    retryDelaysMs?: readonly number[]
+    wait?: (ms: number) => Promise<void>
+    onProgress?: (accumulated: ArcimDocumentImportResult) => void
   } = {},
 ): Promise<ArcimDocumentImportResult> {
   const fetcher = options.fetcher ?? fetch
@@ -767,7 +830,7 @@ export async function runArcimDocumentImportToCompletion(
   const requestSlice = async (): Promise<ArcimDocumentImportResult> => {
     for (let attempt = 0; ; attempt++) {
       try {
-        return await requestArcimDocumentImport(consentId, false, fetcher, cursor, run)
+        return await requestArcimDocumentImport(consentId, dryRun, fetcher, cursor, run, options.onProgress ? slice => options.onProgress?.(mergeArcimDocumentImportResults(accumulated,slice)) : undefined)
       } catch (error) {
         if (attempt >= retryDelaysMs.length || !isTransientImportFailure(error)) throw error
         await wait(retryDelaysMs[attempt])
@@ -778,6 +841,7 @@ export async function runArcimDocumentImportToCompletion(
   for (let round = 0; round < MAX_IMPORT_ROUNDS; round++) {
     const slice = await requestSlice()
     run = slice.run ?? run
+
     accumulated = mergeArcimDocumentImportResults(accumulated, slice)
     if (!slice.partial) {
       return { ...accumulated, partial: false, nextCursor: null }

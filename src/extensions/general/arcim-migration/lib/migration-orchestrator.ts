@@ -228,6 +228,7 @@ export async function executeMigration(options: MigrationOptions): Promise<Migra
     }
 
     // ── Step 2: Asset register (Fortnox only) ──────────────────────
+
     // Register metadata only: the bookkeeping values (12xx anskaffning and
     // ackumulerade avskrivningar) already arrived via SIE, so this step never
     // writes journal entries. A consent without the Fortnox assets scope

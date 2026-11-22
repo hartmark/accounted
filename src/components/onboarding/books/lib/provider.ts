@@ -42,9 +42,10 @@ export interface ProviderPreview {
   /** Counts over the default years the preview read; shown via previewCountsForSelection. */
   sieStats: ProviderPreviewCounts | null
   sourceYears?: SourceFiscalYear[]
-  maxSelectedYears?: number
+  maxSelectedYears?: number | null
   /** Start years the company's completed SIE imports hold (crm#1686). */
   importedFiscalYears?: number[]
+
   hasSieData: boolean
 }
 

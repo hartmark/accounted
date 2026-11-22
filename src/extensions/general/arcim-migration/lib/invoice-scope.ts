@@ -37,6 +37,7 @@ import type { MigrationJobScope } from '@/lib/providers/migration-contract'
 export interface FiscalYearScope {
   start: string
   end: string
+  periods?: { start: string; end: string }[]
 }
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}/
@@ -59,9 +60,11 @@ export function invoiceWithinScope(
   if (!issued) return true
   if (issued > scope.end) return false
   if (!dto.paymentStatus?.paid) return true
-  if (issued >= scope.start) return true
+  const periods = scope.periods?.length ? scope.periods : [{start:scope.start,end:scope.end}]
+  if (periods.some(period => issued >= period.start && issued <= period.end)) return true
+
   const settled = isoDay(dto.paymentStatus.lastPaymentDate)
-  return settled !== null && settled >= scope.start
+  return settled !== null && periods.some(period => issued <= period.end && settled >= period.start)
 }
 
 /**
@@ -84,7 +87,9 @@ function isoDay(value: string | undefined): string | null {
  */
 export function fiscalYearScopeFromImports(
   rows: ReadonlyArray<{ fiscal_year_start: string | null; fiscal_year_end: string | null }> | null | undefined,
+  options?: { years?: number[] },
 ): FiscalYearScope | null {
+  if (options?.years) rows = rows?.filter(row => row.fiscal_year_start && options.years!.includes(Number(row.fiscal_year_start.slice(0, 4))))
   if (!rows || rows.length === 0) return null
   let start: string | null = null
   let end: string | null = null
@@ -93,7 +98,7 @@ export function fiscalYearScopeFromImports(
     if (start === null || row.fiscal_year_start < start) start = row.fiscal_year_start
     if (end === null || row.fiscal_year_end > end) end = row.fiscal_year_end
   }
-  return start && end ? { start, end } : null
+  return start && end ? { start, end, ...(options?.years ? {periods:[...new Map(rows.map(row => [`${row.fiscal_year_start}:${row.fiscal_year_end}`,{start:row.fiscal_year_start!,end:row.fiscal_year_end!}])).values()].sort((a,b)=>a.start.localeCompare(b.start)||a.end.localeCompare(b.end))} : {}) } : null
 }
 
 /**
@@ -108,5 +113,5 @@ export function invoiceScopeNow(
   imported: FiscalYearScope | null,
 ): MigrationJobScope | null {
   if (!imported) return stored ?? null
-  return { ...stored, start: imported.start, end: imported.end }
+  return { ...stored, start: imported.start, end: imported.end, ...(stored?.periods?.length ? {periods:stored.periods} : {}) }
 }

@@ -580,6 +580,7 @@ export async function linkMigratedRegistrationVouchers(
   const copies = buildCopyIndexes(vouchers)
   const reversedCopies = copies.reversed
 
+
   // 2. Resolve refs in memory. Two inputs landing on one verifikat is a
   //    contest neither side can win without guessing: both stay NULL.
   const resolved: { input: MigratedInvoiceLinkInput; entryId: string }[] = []

@@ -9,7 +9,16 @@ export class ExecutionBudgetExceeded extends Error {
   }
 }
 
+/** Provider responses must fit the request quota before callers buffer them. */
+export class ResponseByteLimitExceeded extends Error {
+  constructor(readonly limit: number) {
+    super(`Response byte budget exceeded: ${limit}`)
+    this.name = 'ResponseByteLimitExceeded'
+  }
+}
+
 interface ExecutionBudget {
+  bytes?: { response: number; total: number; used: number }
   deadline: number
   stage: string
   signal: AbortSignal
@@ -42,6 +51,7 @@ export async function withExecutionDeadline<T>(
   deadline: number,
   stage: string,
   operation: () => Promise<T>,
+  byteLimits?: { response: number; total: number },
 ): Promise<T> {
   const parent = budgets.getStore()
   const end = Math.min(deadline, parent?.deadline ?? Infinity)
@@ -50,7 +60,7 @@ export async function withExecutionDeadline<T>(
   const signal = parent ? AbortSignal.any([parent.signal, controller.signal]) : controller.signal
   const timer = setTimeout(() => controller.abort(new ExecutionBudgetExceeded(stage)), end - Date.now())
   try {
-    return await budgets.run({ deadline: end, signal, stage }, operation)
+    return await budgets.run({ deadline: end, signal, stage, bytes: parent?.bytes ?? (byteLimits ? { ...byteLimits, used: 0 } : undefined) }, operation)
   } finally {
     clearTimeout(timer)
     controller.abort(new ExecutionBudgetExceeded(stage))
@@ -65,7 +75,10 @@ export async function fetchInExecutionBudget(input: RequestInfo | URL, init?: Re
     ? init?.signal ? AbortSignal.any([budget.signal, init.signal]) : budget.signal
     : init?.signal
   try {
-    return await fetch(input, { ...init, ...(signal ? { signal } : {}) })
+    const quota = budget?.bytes
+    if (quota && quota.used >= quota.total) throw new ResponseByteLimitExceeded(quota.total)
+    const response = await fetch(input, { ...init, ...(signal ? { signal } : {}) })
+    return quota ? byteBoundResponse(response, quota) : response
   } catch (error) {
     checkExecutionBudget()
     throw error
@@ -119,4 +132,48 @@ export async function waitForExecutionTurn<T>(turn: Promise<T>): Promise<T> {
     budget.signal.addEventListener('abort', abort, { once: true })
     turn.then(resolve, reject).finally(() => budget.signal.removeEventListener('abort', abort))
   })
+}
+
+/** Enforce declared and streamed response sizes before a provider client buffers the body. */
+async function byteBoundResponse(
+  response: Response,
+  quota: { response: number; total: number; used: number },
+): Promise<Response> {
+  const declared = Number(response.headers.get('content-length'))
+  if (declared > quota.response || declared > quota.total - quota.used) {
+    await response.body?.cancel()
+    throw new ResponseByteLimitExceeded(Math.min(quota.response, quota.total - quota.used))
+  }
+  if (!response.body) return response
+  const reader = response.body.getReader()
+  let received = 0
+  const body = new ReadableStream<Uint8Array>({
+    async pull(controller) {
+      try {
+        checkExecutionBudget()
+        const chunk = await reader.read()
+        checkExecutionBudget()
+        if (chunk.done) {
+          controller.close()
+          reader.releaseLock()
+          return
+        }
+        received += chunk.value.byteLength
+        quota.used += chunk.value.byteLength
+        if (received > quota.response || quota.used > quota.total) {
+          throw new ResponseByteLimitExceeded(Math.min(quota.response, quota.total))
+        }
+        controller.enqueue(chunk.value)
+      } catch (error) {
+        controller.error(error)
+        await reader.cancel(error)
+        reader.releaseLock()
+      }
+    },
+    async cancel(reason) {
+      await reader.cancel(reason)
+      reader.releaseLock()
+    },
+  })
+  return new Response(body, { status: response.status, statusText: response.statusText, headers: response.headers })
 }

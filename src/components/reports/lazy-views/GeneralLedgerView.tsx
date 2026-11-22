@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
+import { usePageState } from '@/lib/hooks/use-page-state'
 import Link from 'next/link'
 import { useTranslations } from 'next-intl'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -11,7 +12,9 @@ import { AccountNumber } from '@/components/ui/account-number'
 import { QUIET_LINK_CLASS, SortableTh } from '@/components/ui/dry-table'
 import { InfoTooltip } from '@/components/ui/info-tooltip'
 import { ToolbarSearch } from '@/components/ui/toolbar-search'
-import { MagnifyingGlassIcon } from '@/components/icons'
+import { ResponsiveTable } from '@/components/ui/responsive-table'
+import { expandableSurface } from '@/components/ui/expandable-surface'
+import { ChevronDownIcon, ChevronRightIcon, MagnifyingGlassIcon } from '@/components/icons'
 import { ReportExportMenu } from '@/components/reports/ReportExportMenu'
 import {
   ReportEmptyState,
@@ -109,12 +112,20 @@ function nextLedgerRowSort(current: LedgerRowSort, column: LedgerRowSortColumn):
 const EMPTY_DATE_RANGE: DateRangeValue = {}
 
 export default function GeneralLedgerView({ periodId, initialAccountFilter, dimensionFilter = null, dateRange = EMPTY_DATE_RANGE }: { periodId: string; initialAccountFilter: string | null; dimensionFilter?: DimensionFilterValue | null; dateRange?: DateRangeValue }) {
+  const [hideInactive,setHideInactive] = usePageState('ledger-hide-inactive',true)
   const [accountFrom, setAccountFrom] = useState(initialAccountFilter ?? '')
   const [accountTo, setAccountTo] = useState(initialAccountFilter ?? '')
   // The account range the ledger is fetched for: what Filtrera applied. A new
   // period, window, dimension or drill-down applies the drill-down's account
   // when there is one (into the fields too), else what the fields hold.
   const [applied, setApplied] = useState({ from: accountFrom, to: accountTo })
+  const [savedRange,setSavedRange,rangeReady] = usePageState(`ledger-range:${periodId}:${initialAccountFilter ?? ''}`, {from:initialAccountFilter ?? '',to:initialAccountFilter ?? ''})
+  useEffect(()=>{
+    if(!rangeReady)return
+    setAccountFrom(savedRange.from)
+    setAccountTo(savedRange.to)
+    setApplied(savedRange)
+  },[rangeReady,savedRange])
   const scope = `${reportQuery(periodId, dateRange, dimensionFilter)}|${initialAccountFilter ?? ''}`
   const [appliedScope, setAppliedScope] = useState(scope)
   if (appliedScope !== scope) {
@@ -132,6 +143,7 @@ export default function GeneralLedgerView({ periodId, initialAccountFilter, dime
   // right after mount (the date-range control resolves its preset, or a
   // drill-down's window), and the superseded answer is dropped.
   const params = new URLSearchParams({ period_id: periodId })
+  if (!hideInactive) params.set('include_inactive','true')
   if (applied.from) params.set('account_from', applied.from)
   if (applied.to) params.set('account_to', applied.to)
   if (dateRange.fromDate) params.set('from_date', dateRange.fromDate)
@@ -150,6 +162,7 @@ export default function GeneralLedgerView({ periodId, initialAccountFilter, dime
 
   // Filtrera with an unchanged range fetches again, as it always has.
   const applyAccountRange = () => {
+    setSavedRange({from:accountFrom,to:accountTo})
     if (applied.from === accountFrom && applied.to === accountTo) refetch()
     else setApplied({ from: accountFrom, to: accountTo })
   }
@@ -168,10 +181,10 @@ export default function GeneralLedgerView({ periodId, initialAccountFilter, dime
   const rangeApplied = applied.from !== '' || applied.to !== ''
   if (!data || (data.accounts.length === 0 && !rangeApplied)) {
     return (
-      <ReportEmptyState
+      <div><Button variant="outline" onClick={()=>setHideInactive(!hideInactive)}>{hideInactive ? t('show_inactive_accounts') : t('hide_inactive_accounts')}</Button><ReportEmptyState
         title="Inga verifikationer i perioden"
         description="Det finns inga bokförda verifikationer i den valda perioden."
-      />
+      /></div>
     )
   }
 
@@ -214,6 +227,7 @@ export default function GeneralLedgerView({ periodId, initialAccountFilter, dime
         <Button onClick={applyAccountRange} variant="outline">
           Filtrera
         </Button>
+        <Button variant="outline" aria-pressed={!hideInactive} onClick={()=>setHideInactive(!hideInactive)}>{hideInactive ? t('show_inactive_accounts') : t('hide_inactive_accounts')}</Button>
       </div>
 
       {data.accounts.length === 0 && (
@@ -249,7 +263,8 @@ export default function GeneralLedgerView({ periodId, initialAccountFilter, dime
 
 function LedgerAccountCard({ account, linesQuery, defaultOpen }: { account: GeneralLedgerAccount; linesQuery: string; defaultOpen: boolean }) {
   const t = useTranslations('general_ledger')
-  const [open, setOpen] = useState(defaultOpen)
+  const tReports = useTranslations('reports')
+  const [open, setOpen] = usePageState(`ledger-open:${linesQuery}:${account.account_number}`,defaultOpen)
   const [sort, setSort] = useState<LedgerRowSort>(LEDGER_ROW_ORDER)
   // The search box sits behind a magnifier, so a ledger of many accounts is
   // not a column of search boxes. The account the view is about (a
@@ -267,7 +282,7 @@ function LedgerAccountCard({ account, linesQuery, defaultOpen }: { account: Gene
     return () => clearTimeout(handle)
   }, [searchInput])
 
-  const rowsShown = account.lines ? account.lines.length > 0 : open && account.line_count > 0
+  const rowsShown = open && (account.lines ? account.lines.length > 0 : account.line_count > 0)
   const controls: LedgerRowControls = {
     sort,
     search,
@@ -276,14 +291,28 @@ function LedgerAccountCard({ account, linesQuery, defaultOpen }: { account: Gene
   }
 
   return (
-    <Card>
+    <Card {...expandableSurface(() => setOpen(!open))}>
       <CardHeader>
-        <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
+        <div className="flex min-w-0 flex-wrap items-start justify-between gap-x-3 gap-y-2">
           {/* data-ph-mask: account number and name are user chart data */}
-          <CardTitle data-ph-mask="" className="text-base">
-            <AccountNumber number={account.account_number} name={account.account_name} showName />
+          <CardTitle data-ph-mask="" className="min-w-0 max-w-full text-base">
+            <button
+              type="button"
+              className="flex min-w-0 max-w-full items-start gap-2 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              aria-label={tReports(open ? 'ledger_collapse_account' : 'ledger_expand_account', { number: account.account_number })}
+              aria-expanded={open}
+              aria-controls={`ledger-account-${account.account_number}`}
+              onClick={() => setOpen(!open)}
+            >
+              {open ? <ChevronDownIcon className="mt-1 h-4 w-4 shrink-0" /> : <ChevronRightIcon className="mt-1 h-4 w-4 shrink-0" />}
+              <span className="min-w-0 break-words sm:hidden">
+                <span className="mr-2 font-mono text-sm">{account.account_number}</span>
+                {account.account_name}
+              </span>
+              <span className="hidden sm:inline"><AccountNumber number={account.account_number} name={account.account_name} showName /></span>
+            </button>
           </CardTitle>
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+          <div className="flex min-w-0 max-w-full flex-wrap items-center gap-x-3 gap-y-2">
             {rowsShown && (searchOpen ? (
               <ToolbarSearch
                 autoFocus={!defaultOpen}
@@ -311,8 +340,8 @@ function LedgerAccountCard({ account, linesQuery, defaultOpen }: { account: Gene
           </div>
         </div>
       </CardHeader>
-      <CardContent>
-        {account.lines ? (
+      <CardContent id={`ledger-account-${account.account_number}`}>
+        {open && account.lines ? (
           <InlineLedgerLines account={account} lines={account.lines} controls={controls} />
         ) : open && account.line_count > 0 ? (
           <PagedLedgerLines account={account} linesQuery={linesQuery} controls={controls} />
@@ -439,7 +468,7 @@ function LedgerLinesTable({ account, lines, controls, found, loading = false }: 
     onSort: () => onSort(column),
   })
   return (
-    <div className="overflow-x-auto -mx-2 px-2"><table className="w-full text-sm min-w-[500px]">
+    <ResponsiveTable primaryColumn={3}><table className="w-full text-sm min-w-[500px]">
       <thead className="[&_th]:font-medium [&_th]:text-xs [&_th]:tracking-wider [&_th]:text-muted-foreground">
         <tr className="border-b text-left">
           <SortableTh label={t('th_voucher')} {...sortHead('voucher')} className={`${LEDGER_SORT_TH_START_CLASS} w-16`} />
@@ -514,6 +543,6 @@ function LedgerLinesTable({ account, lines, controls, found, loading = false }: 
           <td className="py-2 text-right tabular-nums">{formatAmount(account.closing_balance)}</td>
         </tr>
       </tfoot>
-    </table></div>
+    </table></ResponsiveTable>
   )
 }

@@ -1,3 +1,6 @@
+import { formatVoucher } from '@/lib/bookkeeping/voucher-series-resolver'
+import { bokioAccountKey } from './bokio-source-identity'
+import { explainUnmatchedDocument, pageUnmatchedDocuments, type UnmatchedProviderDocument, type ProviderDocumentMatchReview } from '@/lib/providers/document-match-review'
 /**
  * Provider document (underlag) import: best-effort, re-runnable.
  *
@@ -132,6 +135,7 @@ import {
 } from '@/lib/core/documents/document-service'
 import {
   buildCopyIndexes,
+  buildVoucherIndex,
   fetchFiscalPeriods,
   fetchSourceRefVouchers,
   isLiveCopy,
@@ -245,6 +249,8 @@ export interface ImportDocumentsOptions {
    * until its function's deadline instead of 30 s: a large Fortnox listing
    * alone takes about two minutes, paid again by every slice (crm#1581).
    */
+  onProgress?: (result:ImportDocumentsResult)=>void
+  review?: {offset:number;limit:number;query?:string}
   sweepDeadline?: number
   /** A server continuation re-checks the run and connection between files. */
   shouldContinue?: () => Promise<boolean>
@@ -255,6 +261,7 @@ export interface ImportDocumentsOptions {
 export const DEFAULT_IMPORT_DOCUMENTS_TIME_BUDGET_MS = 30_000
 
 export interface ImportDocumentsResult {
+  unmatchedReview?: ProviderDocumentMatchReview
   provider: string
   /** Provider attachments linked to a voucher that were considered. */
   scanned: number
@@ -949,6 +956,15 @@ export async function importProviderDocuments(
     ),
   ])
 
+  const retiredImports = await fetchAllRows<{id:string}>(({from,to})=>supabase.from('sie_imports').select('id').eq('company_id',companyId).in('status',['undone','replaced']).order('id').range(from,to))
+  const retiredIds = new Set(retiredImports.map(row=>row.id))
+  const currentVouchers = vouchers.filter(row=>!row.import_batch_id || !retiredIds.has(row.import_batch_id))
+  const archivedUploads = provider === 'bokio' ? await fetchAllRows<{source_id:string;target_id:string}>(({from,to})=>supabase
+    .from('migration_source_records').select('source_id,target_id').eq('company_id',companyId).eq('provider','bokio')
+    .eq('account_key',bokioAccountKey(resolved,consentId)).eq('resource','uploads').order('source_id').range(from,to)) : []
+  const archivedDocumentByUpload = new Map(archivedUploads.map(row=>[row.source_id,row.target_id]))
+  const documentEntryById = new Map(existingAttachments.map(row=>[row.id,row.journal_entry_id]))
+
   // Stable order across calls: a provider may page its listing differently
   // from one call to the next, and the cursor is "continue after this id".
   const attachments = [...listing.attachments].sort((a, b) =>
@@ -961,11 +977,34 @@ export async function importProviderDocuments(
 
   // Index Accounted verifikat by (period, series, number) for in-memory
   // resolution, the live copies apart from the reversed ones (isLiveCopy).
-  const voucherCopies = buildCopyIndexes(vouchers)
+  const voucherCopies = buildCopyIndexes(currentVouchers)
   const entryDateById = new Map(vouchers.map((v) => [v.id, v.entry_date]))
   const periodIdByEntry = new Map(vouchers.map((v) => [v.id, v.fiscal_period_id]))
   const periodById = new Map(periods.map((p) => [p.id, p]))
   const lockedPeriodIds = new Set<string>()
+
+  if (opts.review) {
+    result.dryRun = true
+    const index = buildVoucherIndex(currentVouchers)
+    const rows: UnmatchedProviderDocument[] = []
+    for (const attachment of attachments) {
+      const ref = attachment.ref
+      const match = ref ? resolveLiveDatedRef(voucherCopies,periods,ref) : null
+      const disagrees = !!(ref && match?.resolved && !ref.dateTo && entryDateById.get(match.entryId)?.slice(0,10) !== ref.date.slice(0,10))
+      if (match?.resolved && !disagrees) continue
+      const {reason,candidates} = explainUnmatchedDocument(index,periods,ref,disagrees)
+      rows.push({uploadId:attachment.id,fileName:attachment.fileName,voucher:ref ? `${ref.series}${ref.number}` : null,
+        date:ref?.date ?? null,dateTo:ref?.dateTo ?? null,reason,candidateCount:candidates.length,
+        candidates:candidates.slice().sort((a,b)=>a.entry_date.localeCompare(b.entry_date)||a.id.localeCompare(b.id)).slice(0,5).map(row=>({
+          id:row.id,label:row.voucher_series && row.voucher_number!=null ? formatVoucher(row) : ref ? `${ref.series}${ref.number}` : '',
+          date:row.entry_date,reversed:row.status==='reversed'||!!row.reversed_by_id}))})
+    }
+    result.unmatchedSamples = rows.slice(0,20).map(row=>({uploadId:row.uploadId,voucher:row.voucher ?? "(unresolved)",date:row.date ?? "",reason:row.reason === "date_mismatch" ? "date_mismatch" as const : "no_voucher_ref" as const}))
+    result.unmatched = rows.length
+    result.scanned = attachments.length
+    result.unmatchedReview = pageUnmatchedDocuments(provider,rows,opts.review)
+    return result
+  }
 
   // Verifikat that already carry underlag from another path: the underlag
   // wizard, an API client, a manual upload. The import never adds to them. A
@@ -1019,6 +1058,14 @@ export async function importProviderDocuments(
     }
     throw new Error('BOKIO_UPLOAD_MAPPING_FAILED')
   }
+
+  let lastProgressAt = 0
+  const publishProgress = (force=false) => {
+    if (!opts.onProgress || (!force && result.scanned % 10 !== 0 && Date.now()-lastProgressAt < 500)) return
+    lastProgressAt=Date.now()
+    opts.onProgress({...result,unmatchedSamples:result.unmatchedSamples.slice(),lockedPeriods:result.lockedPeriods.slice()})
+  }
+  publishProgress(true)
 
   const unmatchedByReason: Partial<Record<UnmatchedReason, number>> = {}
   const recordUnmatched = (uploadId: string, voucher: string, date: string, reason: UnmatchedReason) => {
@@ -1288,7 +1335,7 @@ export async function importProviderDocuments(
       }
       // Never add to a verifikat that carries underlag from another path
       // (crm#200): the copy goes on the invoice only.
-      if (verifikatWithOtherUnderlag.has(journalEntryId)) {
+    if (verifikatWithOtherUnderlag.has(journalEntryId)) {
         journalEntryId = null
         invoiceOnlyReason = 'other_underlag'
       }
@@ -1400,6 +1447,7 @@ export async function importProviderDocuments(
   const sweepStartedAt = now()
 
   for (let index = startIndex; index < attachments.length; index++) {
+    try {
     if (shouldContinue && !(await shouldContinue())) {
       result.partial = true
       result.nextCursor = index > startIndex ? attachments[index - 1].id : startCursor
@@ -1486,6 +1534,11 @@ export async function importProviderDocuments(
       continue
     }
 
+    const archivedDocumentId = archivedDocumentByUpload.get(attachment.id)
+    if (archivedDocumentId && documentEntryById.get(archivedDocumentId) === journalEntryId) {
+      result.skipped++
+      continue
+    }
     if (verifikatWithOtherUnderlag.has(journalEntryId)) {
       result.skipped++
       continue
@@ -1604,6 +1657,7 @@ export async function importProviderDocuments(
         voucher: `${target.series}${target.number}`,
       })
     }
+    } finally { publishProgress() }
   }
 
   // A source that failed for now (not refused: a timeout, a 5xx) left its
@@ -1659,5 +1713,6 @@ export async function importProviderDocuments(
     elapsedMs: now() - startedAt,
   })
 
+  publishProgress(true)
   return result
 }

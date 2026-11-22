@@ -41,6 +41,8 @@ export interface ListAccountsOptions {
   today?: string
   /** Compute status per account (N reads). Default true; the rail needs it. */
   withStatus?: boolean
+  /** Include manually reconciled ledger accounts. Default true. */
+  includeManual?: boolean
   /** Window for the bank bridge ("i perioden"). Defaults to the calendar year of `today`. */
   windowFrom?: string
   windowTo?: string
@@ -433,7 +435,7 @@ export async function listReconciliationAccounts(
   // A failed read costs only this group, never the bank or skattekonto rows.
   // The skattekonto's own account leaves the list once that read answers (it
   // carries no specification, so nothing else about the list depends on it).
-  const manualRead = listManualAccounts(supabase, companyId, {
+  const manualRead = options.includeManual === false ? Promise.resolve([]) : listManualAccounts(supabase, companyId, {
     asOf: window.to,
     balanceSheet: options.balanceSheet,
     exclude: new Set<string>(cashAccounts.map((a) => a.ledger_account)),
@@ -446,6 +448,7 @@ export async function listReconciliationAccounts(
 
   const [bankAccounts, skattekonto, manual] = await Promise.all([bankAccountsRead, skattekontoRead, manualRead])
   const manualAccounts = skattekonto ? manual.filter((a) => a.account_number !== skattekonto.account_number) : manual
+
 
   return [...bankAccounts, ...(skattekonto ? [skattekonto] : []), ...manualAccounts]
 }

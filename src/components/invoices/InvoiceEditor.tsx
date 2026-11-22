@@ -9,6 +9,8 @@ import { isCreditNoteDocument } from '@/lib/bookkeeping/credit-note-state'
 import { createClient } from '@/lib/supabase/client'
 import { useForm, useFieldArray, Controller, type FieldErrors } from 'react-hook-form'
 import { Reorder } from 'motion/react'
+import { ResponsiveFormRow } from '@/components/ui/responsive-form-row'
+
 import { SortableRow } from '@/components/ui/sortable-row'
 import { AutoGrowTextarea } from '@/components/invoices/AutoGrowTextarea'
 import { zodResolver } from '@hookform/resolvers/zod'
@@ -2088,6 +2090,12 @@ export default function InvoiceEditor(props: InvoiceEditorProps = { mode: 'creat
   const extraColumns = (showVatColumn ? 1 : 0) + (showDeductionColumn ? 1 : 0)
   const rowGridClass =
     extraColumns === 2 ? ROW_GRID_TWO_EXTRA : extraColumns === 1 ? ROW_GRID_ONE_EXTRA : ROW_GRID_BASE
+  const rowFieldLabels = [
+    t('description_label'), t('quantity_label'), t('unit_price_label'),
+    ...(showVatColumn ? [t('vat_label')] : []),
+    ...(showDeductionColumn ? [tForm('deduction_column')] : []),
+    t('amount_label'), '',
+  ]
 
   // ROT/RUT yearly-ceiling context: what this customer has already been
   // granted in the invoice's calendar year (SEK), across issued invoices with
@@ -4424,13 +4432,12 @@ export default function InvoiceEditor(props: InvoiceEditorProps = { mode: 'creat
             aside={productRowCount > 0 ? t('rows_count', { count: productRowCount }) : null}
           >
             <div ref={entryRootRef} className="relative">
-              {/* relative: the rows' absolutely placed helpers stay inside the
-                  scroller instead of widening the page on a phone. */}
-              <div className="relative overflow-x-auto">
+              <div className="responsive-form-editor min-w-0">
                 <div>
                   {/* Header row: offset by the drag-grip gutter (w-8). */}
-                  <div className="pl-8">
-                    <div className={cn(rowGridClass, 'border-b-hairline pb-2 text-xs text-muted-foreground')}>
+                  <div className="responsive-form-header pl-8">
+                    <div className={cn(rowGridClass, 'border-b border-border pb-2 text-[11px] font-medium text-muted-foreground')}>
+
                       <div className="px-2">{t('description_label')}</div>
                       <div className="px-2 text-right">{t('quantity_label')}</div>
                       <div className="px-2 text-right">{t('unit_price_label')}</div>
@@ -4567,7 +4574,7 @@ export default function InvoiceEditor(props: InvoiceEditorProps = { mode: 'creat
                             id={`invoice-editor-row-${index}`}
                             className={cn('group border-b-hairline', settleIndex === index && 'row-settle')}
                           >
-                            <div className={cn(rowGridClass, 'py-1')}>
+                            <ResponsiveFormRow labels={rowFieldLabels} className={cn(rowGridClass, 'py-1')}>
                               <div className="min-w-0">
                                 <AutoGrowTextarea
                                   {...register(`items.${index}.description`)}
@@ -4834,7 +4841,7 @@ export default function InvoiceEditor(props: InvoiceEditorProps = { mode: 'creat
                                   </DropdownMenuContent>
                                 </DropdownMenu>
                               </span>
-                            </div>
+                            </ResponsiveFormRow>
 
                             {rowErrorMsg && <p className="px-2 pb-2 text-xs text-destructive">{rowErrorMsg}</p>}
                             {savingArticleIndex === index && (
@@ -5018,7 +5025,8 @@ export default function InvoiceEditor(props: InvoiceEditorProps = { mode: 'creat
                       stay stable). Ghost cells preview the append defaults. */}
                   <div className="flex">
                     <div className="w-8 shrink-0" aria-hidden="true" />
-                    <div className={cn(rowGridClass, 'flex-1 border-b-hairline py-1')}>
+                    <ResponsiveFormRow labels={rowFieldLabels} className={cn(rowGridClass, 'flex-1 border-b border-border py-1')}>
+
                       <input
                         ref={entryInputRef}
                         value={entryQuery}
@@ -5130,7 +5138,7 @@ export default function InvoiceEditor(props: InvoiceEditorProps = { mode: 'creat
                       {showDeductionColumn && <div />}
                       <div />
                       <div />
-                    </div>
+                    </ResponsiveFormRow>
                   </div>
                 </div>
               </div>

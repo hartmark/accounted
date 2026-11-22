@@ -1,10 +1,20 @@
+import { matchImportedSkattekonto } from '../skatteverket/lib/skattekonto-import-match'
+import { requireWritePermission } from '@/lib/auth/require-write'
+import { checkExecutionBudget, ExecutionBudgetExceeded, ResponseByteLimitExceeded, withExecutionDeadline } from '@/lib/http/execution-budget'
+import { SIE_REQUEST_LIMITS, SieRequestLimitError } from './lib/sie-request-limits'
+import { streamDocumentImport } from './lib/document-import-progress'
+import { documentReviewRoutes } from './lib/document-review-routes'
+import { planSIEResync, type SIEResyncPlan } from '@/lib/import/sie-resync'
+import { historicalReceivableRoutes } from './lib/historical-receivable-routes'
+import { BokioApiError } from '@/lib/providers/bokio/client'
 import { migrationJobRoutes } from './lib/migration-job-routes'
 import { invoiceCompletionRoutes } from './lib/invoice-completion-routes'
 import { deductionBackfillRoutes } from './lib/deduction-backfill-routes'
 import { companyMismatchMessages } from './lib/company-mismatch-message'
 import { archiveSIEIntakeText, readSIEIntakeFile, SIEArchiveUnavailableError } from '@/lib/import/sie-intake'
 import { buildTheaterModel } from '@/lib/import/theater-model'
-import { submitSIEJob } from '@/lib/import/sie-jobs'
+import { resolveSIEFiscalYear, submitSIEJob } from '@/lib/import/sie-jobs'
+
 import { runSIEWorker } from '@/lib/import/sie-job-worker'
 import type { Extension, ExtensionContext } from '@/lib/extensions/types'
 import { after, NextResponse } from 'next/server'
@@ -40,6 +50,7 @@ import {
   FiscalYearSelectionError,
   MAX_SELECTED_FISCAL_YEARS,
   type SieFetchFailure,
+
   type SourceFiscalYear,
 } from './lib/sie-fetcher'
 import { mapCompanyInfo } from './lib/entity-mapper'
@@ -79,6 +90,7 @@ import { applySourceVatCodes } from '@/lib/import/account-vat-treatment'
 import { fortnoxVatCodeToTreatment } from '@/lib/providers/fortnox/vat-codes'
 import { loadMappings, generateImportPreview, findOverlappingPeriodImports } from '@/lib/import/sie-import'
 import { buildMappingTargets } from './lib/mapping-targets'
+import { rememberCompletedVatReviews } from './lib/remembered-vat-reviews'
 import type { ProviderName } from '@/lib/providers/types'
 import { missingTokenCredential } from '@/lib/providers/catalog'
 import type { ProviderPreviewCounts } from '@/lib/providers/preview-counts'
@@ -323,6 +335,16 @@ async function buildBjornLundenActivationUrl(
  * only the error itself holds. Without the override the code would fall
  * through entryFor() to INTERNAL_ERROR and answer 500.
  */
+/** Keep SIE permission failures consistent across preview and year selection. */
+function bokioSiePermissionResponse(error: unknown): NextResponse | null {
+  if (!(error instanceof BokioApiError) || error.statusCode !== 403) return null
+  return errorResponseFromCode('PROVIDER_RESOURCE_FORBIDDEN', moduleLog, {
+    status: 403,
+    messageSv: 'Bokio nekade SIE-exporten. Kontrollera att integrationstoken har behörigheterna fiscal-years:read och sie:read och att abonnemanget tillåter API-export. Uppdatera token i anslutningen om du skapar en ny.',
+    messageEn: 'Bokio denied the SIE export. Check that the integration token has the fiscal-years:read and sie:read scopes and that your plan allows API export. Update the connection token if you create a new one.',
+  })
+}
+
 function providerFailureResponse(error: unknown, fallbackCode: string): NextResponse {
   const classified = classifyProviderError(error)
   const ctx = {
@@ -376,6 +398,8 @@ export const arcimMigrationExtension: Extension = {
 
   apiRoutes: [
     ...migrationJobRoutes,
+    ...documentReviewRoutes,
+    ...historicalReceivableRoutes,
     ...invoiceCompletionRoutes,
     ...deductionBackfillRoutes,
     // ── Check existing connections and import history ──────────────
@@ -1126,7 +1150,9 @@ export const arcimMigrationExtension: Extension = {
     {
       method: 'GET',
       path: '/preview',
-      handler: async (request: Request, ctx: ExtensionContext) => {
+      handler: async (request: Request, ctx: ExtensionContext) => withExecutionDeadline(Date.now() + SIE_REQUEST_LIMITS.durationMs, 'provider-sie-preview', async () => {
+        const permission = await requireWritePermission(ctx.supabase,ctx.userId,{companyId:ctx.companyId})
+        if (!permission.ok) return permission.response
         const log = ctx.log
         const supabase = ctx.supabase
 
@@ -1180,7 +1206,7 @@ export const arcimMigrationExtension: Extension = {
           // migration job use. A bare sieAvailable: false read as "SIE-import
           // krävs" in the wizard, so a rate limit, an outage or a missing
           // permission asked for a file the provider can serve (crm#1118).
-          // Stays null for Visma and Bokio, which serve no SIE over the API.
+          // Stays null for providers without SIE-over-API support.
           let sieError: SieFetchFailure | null = null
           // Every fiscal year the source has, with the default selection
           // marked: the preview step renders them as the year picker, so the
@@ -1199,13 +1225,14 @@ export const arcimMigrationExtension: Extension = {
               // export per extra year, the same work /sie-data repeats right
               // after: honest numbers are worth it.
               const { files, sourceYears: source, failedYears } = await fetchProviderSieFiles(
+
                 provider,
                 resolved.accessToken,
                 resolved.providerCompanyId,
               )
               sourceYears = source
               if (files.length > 0) {
-                const merged = mergeParsedSIEFiles(files.map((f) => parseSIEFile(f.rawContent)))
+                const merged = mergeParsedSIEFiles(files.map((f) => parseProviderSIE(f.rawContent)))
                 sieAvailable = true
                 sieStats = {
                   accountCount: merged.accounts.length,
@@ -1215,6 +1242,7 @@ export const arcimMigrationExtension: Extension = {
                   // wizard shows the counts only while exactly these years
                   // are ticked (previewCountsForSelection, crm#1037).
                   fiscalYears: files.map((f) => f.fiscalYear),
+
                 }
               } else if (failedYears.length > 0) {
                 // The year list came back, but no year's export did: the
@@ -1228,12 +1256,18 @@ export const arcimMigrationExtension: Extension = {
                 )
               }
             } catch (err) {
+              if (err instanceof ExecutionBudgetExceeded || err instanceof ResponseByteLimitExceeded) throw err
               // The year list itself failed. A company card that came back
               // above proves the token answers, so a 403 here is the provider
               // closing the ledger, not a dead grant: the migration
               // orchestrator reads its company step the same way.
+              if (err instanceof SieRequestLimitError) return sieRequestLimitResponse(err)
               sieError = classifySieFetchFailure(err, { grantProven: mapped !== null })
               log.info(`SIE export failed (${sieError.code}):`, err instanceof Error ? err.message : String(err))
+              const denied = bokioSiePermissionResponse(err)
+              if (denied) return denied
+              log.info('SIE export failed:', err instanceof Error ? err.message : String(err))
+
             }
           }
 
@@ -1282,11 +1316,15 @@ export const arcimMigrationExtension: Extension = {
             // Start years of the completed imports, oldest first: the picker
             // skips them when the source has more years than one run takes.
             importedFiscalYears,
+
             assetStats,
             hasSieData: (sieImportCount ?? 0) > 0,
           })
         } catch (error) {
           log.error('arcim preview failed', error as Error)
+          if (error instanceof ExecutionBudgetExceeded) return errorResponseFromCode('TRANSIENT_ERROR', moduleLog)
+          if (error instanceof ResponseByteLimitExceeded) return sieRequestLimitResponse(new SieRequestLimitError('bytes', error.limit))
+          if (error instanceof SieRequestLimitError) return sieRequestLimitResponse(error)
           // Consent missing or owned by another company: same 404 either way.
           if (error instanceof ConsentNotFoundError) {
             return errorResponseFromCode('PROVIDER_CONSENT_NOT_FOUND', moduleLog, {
@@ -1297,7 +1335,7 @@ export const arcimMigrationExtension: Extension = {
           // reconnect / retry instead of a generic "preview failed".
           return providerFailureResponse(error, 'PROVIDER_PREVIEW_FAILED')
         }
-      },
+      },{ response: SIE_REQUEST_LIMITS.fileBytes, total: SIE_REQUEST_LIMITS.bytes }),
     },
 
     // ── Fetch + parse SIE data for mapping step ───────────────────
@@ -1305,6 +1343,9 @@ export const arcimMigrationExtension: Extension = {
       method: 'GET',
       path: '/sie-data',
       handler: async (request: Request, ctx: ExtensionContext) => {
+        const permission = await requireWritePermission(ctx.supabase,ctx.userId,{companyId:ctx.companyId})
+        if (!permission.ok) return permission.response
+        return withExecutionDeadline(Date.now() + SIE_REQUEST_LIMITS.durationMs, 'provider-sie-data', async () => {
         const log = ctx.log
         const supabase = ctx.supabase
 
@@ -1333,16 +1374,9 @@ export const arcimMigrationExtension: Extension = {
             })
           }
           requestedYears = [...new Set(parsed)].sort((a, b) => a - b)
-          // The resource bound: each selected year is one provider export
-          // fetched and parsed in this invocation (derivation on the
-          // constant). Rejected before any provider call.
-          if (requestedYears.length > MAX_SELECTED_FISCAL_YEARS) {
-            return errorResponseFromCode('VALIDATION_ERROR', moduleLog, {
-              messageSv: `Högst ${MAX_SELECTED_FISCAL_YEARS} räkenskapsår kan hämtas per körning. Välj färre år; resten kan hämtas i en ny körning, äldst först.`,
-              messageEn: `At most ${MAX_SELECTED_FISCAL_YEARS} fiscal years can be fetched per run. Select fewer years; fetch the rest in a second run, oldest first.`,
-              details: { field: 'years', reason: 'too_many', max: MAX_SELECTED_FISCAL_YEARS, requested: requestedYears.length },
-            })
-          }
+          if(requestedYears.length > MAX_SELECTED_FISCAL_YEARS)return sieRequestLimitResponse(new SieRequestLimitError('years',MAX_SELECTED_FISCAL_YEARS))
+
+
         }
 
         try {
@@ -1378,16 +1412,14 @@ export const arcimMigrationExtension: Extension = {
             }
             throw err
           }
+          checkExecutionBudget()
           const { files: sieFiles, failedYears, omittedYears } = fetched
 
           if (sieFiles.length === 0) {
             // Name the selection: the explicit years when the picker sent
             // them, else the rolling default window (interpolated so the
             // text never goes stale).
-            const selection = requestedYears ?? [...getAllowedFiscalYears()].sort((a, b) => a - b)
-            const range = requestedYears
-              ? requestedYears.join(', ')
-              : `${selection[0]}-${selection[selection.length - 1]}`
+            const range = requestedYears ? requestedYears.join(', ') : 'alla tillgängliga år'
             return errorResponseFromCode('PROVIDER_SIE_NO_YEARS', moduleLog, {
               messageSv: `Inga räkenskapsår ${range} hittades hos leverantören.`,
               messageEn: `No fiscal years available for ${range}.`,
@@ -1399,7 +1431,7 @@ export const arcimMigrationExtension: Extension = {
           // preview and the returned `parsed` all read from these parses.
           const parsedFiles = sieFiles.map((file) => ({
             file,
-            parsed: parseSIEFile(file.rawContent),
+            parsed: parseProviderSIE(file.rawContent),
           }))
 
           // Validate the most recent file's parse: unchanged behavior, so no
@@ -1448,6 +1480,7 @@ export const arcimMigrationExtension: Extension = {
           // such an account was impossible to map onto. See
           // ./lib/mapping-targets.
           const mappingTargets = await buildMappingTargets(supabase, companyId, moduleLog)
+          checkExecutionBudget()
           // The same decision the file upload makes, over the whole dataset
           // (#3312). A class 9 account with amounts in any selected year goes
           // to 2999; without this a stored 9xxx mapping, the chart's own 9xxx
@@ -1466,6 +1499,7 @@ export const arcimMigrationExtension: Extension = {
           try {
             const sourceAccounts = await fetchAccountingAccountsDirect(provider, resolved.accessToken)
             const codesByAccount = new Map<string, string>()
+            checkExecutionBudget()
             for (const account of sourceAccounts) {
               if (account.vatCode) codesByAccount.set(account.accountNumber, account.vatCode)
             }
@@ -1478,6 +1512,9 @@ export const arcimMigrationExtension: Extension = {
             log.warn(`Account mapping: ${provider} chart fetch failed, VAT codes fall back to label suggestions`, err as Error)
           }
 
+          mappings = await rememberCompletedVatReviews(supabase, companyId, mappings)
+
+          checkExecutionBudget()
           const mappingStats = getMappingStats(mappings)
 
           log.info(`Account mapping: ${allAccounts.length} unique accounts across ${sieFiles.length} files, ${mappingStats.unmapped} unmapped`)
@@ -1504,13 +1541,17 @@ export const arcimMigrationExtension: Extension = {
           // Detect prior imports by *fiscal period overlap*, not file hash.
           // Providers embed the export-time #GEN date in every SIE export so
           // the hash always changes between syncs; only the period stays
-          // stable. A re-sync replaces the prior import for the same period.
+          // stable. A re-sync compares source references within the same period.
           const fileStatuses: {
             fiscalYear: number
             storagePath: string
             filename: string
             bytes: number
             voucherCount: number
+            fiscalYearStart: string | null
+            fiscalYearEnd: string | null
+            delta: SIEResyncPlan | null
+
             previousImport: {
               id: string
               importedAt: string | null
@@ -1518,6 +1559,7 @@ export const arcimMigrationExtension: Extension = {
               fiscalYearEnd: string | null
             } | null
           }[] = []
+          checkExecutionBudget()
           for (const [index, { file, parsed: fileParsed }] of parsedFiles.entries()) {
             const fyStart = fileParsed.stats.fiscalYearStart
             const fyEnd = fileParsed.stats.fiscalYearEnd
@@ -1535,20 +1577,25 @@ export const arcimMigrationExtension: Extension = {
               // partially deleted data). The unordered .limit(1) this
               // replaces picked an arbitrary row, so the wizard could show
               // a stale "ersätter tidigare import från <date>" (issue #1667).
-              // Import-time replace resolves ALL rows regardless of which
-              // one is displayed here.
+              // Incremental comparison resolves the active source references
+              // independently of which import is displayed here.
               const overlapping = await findOverlappingPeriodImports(
                 supabase, companyId, fyStart, fyEnd
               )
               priorImport = overlapping[0] ?? null
             }
 
+            checkExecutionBudget()
             fileStatuses.push({
               fiscalYear: file.fiscalYear,
               storagePath: archived[index].path,
               filename: `migration-sie-${file.fiscalYear}.se`,
               bytes: archived[index].bytes,
               voucherCount: fileParsed.stats.totalVouchers,
+              fiscalYearStart: fyStart,
+              fiscalYearEnd: fyEnd,
+              delta: priorImport ? await planSIEResync(supabase, companyId, ctx.userId, fileParsed, mappings) : null,
+
               previousImport: priorImport
                 ? {
                     id: priorImport.id,
@@ -1562,7 +1609,8 @@ export const arcimMigrationExtension: Extension = {
 
           const replacedFileCount = fileStatuses.filter(f => f.previousImport).length
 
-          return NextResponse.json({
+          checkExecutionBudget()
+          const serialized = JSON.stringify({
             // The merged dataset's accounts and its theater, built here: the
             // whole parse (every voucher of every year) is as large as the
             // files and stays on the server with them. The theater must see
@@ -1581,13 +1629,18 @@ export const arcimMigrationExtension: Extension = {
               filename: f.filename,
               bytes: f.bytes,
               voucherCount: f.voucherCount,
+              fiscalYearStart: f.fiscalYearStart,
+              fiscalYearEnd: f.fiscalYearEnd,
+
               previousImport: f.previousImport,
+              delta: f.delta ? {added:f.delta.added,unchanged:f.delta.unchanged,reviewCount:f.delta.reviewCount,
+                reviews:f.delta.reviews,metadataChanged:f.delta.metadataChanged} : null,
               // Back-compat for older wizard builds: an `alreadyImported`
               // boolean. The new wizard reads `previousImport` directly.
               alreadyImported: !!f.previousImport,
               importedAt: f.previousImport?.importedAt ?? null,
             })),
-            allImported: false,
+            allImported: fileStatuses.length > 0 && fileStatuses.every(f => f.delta && f.delta.added === 0 && f.delta.reviewCount === 0 && !f.delta.metadataChanged),
             newFileCount: fileStatuses.length - replacedFileCount,
             replacedFileCount,
             // Allowed years whose provider export failed: the wizard warns
@@ -1598,7 +1651,13 @@ export const arcimMigrationExtension: Extension = {
             omittedYears,
             basAccounts: mappingTargets,
           })
+          checkExecutionBudget()
+          if (Buffer.byteLength(serialized, 'utf8') > SIE_REQUEST_LIMITS.bytes) throw new SieRequestLimitError('bytes', SIE_REQUEST_LIMITS.bytes)
+          return new NextResponse(serialized, { headers: { 'Content-Type': 'application/json' } })
         } catch (error) {
+          if (error instanceof ExecutionBudgetExceeded)return errorResponseFromCode('TRANSIENT_ERROR',moduleLog,{requestId:ctx.requestId})
+          if (error instanceof ResponseByteLimitExceeded) return sieRequestLimitResponse(new SieRequestLimitError('bytes', error.limit))
+          if (error instanceof SieRequestLimitError) return sieRequestLimitResponse(error)
           // A file the archive refuses (over 50 MB) names itself.
           if (error instanceof SIEJobValidationError) return sieJobValidationResponse(error, moduleLog, ctx?.requestId)
           log.error('arcim sie-data fetch failed', error as Error)
@@ -1607,8 +1666,12 @@ export const arcimMigrationExtension: Extension = {
           if (error instanceof SIEArchiveUnavailableError) {
             return errorResponseFromCode('SIE_INTAKE_ARCHIVE_UNAVAILABLE', moduleLog, { requestId: ctx?.requestId })
           }
+          const denied = bokioSiePermissionResponse(error)
+          if (denied) return denied
+
           return providerFailureResponse(error, 'PROVIDER_SIE_FETCH_FAILED')
         }
+        },{ response: SIE_REQUEST_LIMITS.fileBytes, total: SIE_REQUEST_LIMITS.bytes })
       },
     },
 
@@ -1635,8 +1698,11 @@ export const arcimMigrationExtension: Extension = {
             importTransactions: boolean
             voucherSeries?: string
             updateAccountNames?: boolean
+            markImportedNoDocRequired?: boolean
             supersedesImportId?: string
             onlyUsedAccounts?: boolean
+            incremental?: boolean
+
           }
         } | null
         const { storagePath, filename = 'migration.se', mappings, options } = body ?? {}
@@ -1709,12 +1775,26 @@ export const arcimMigrationExtension: Extension = {
             })
           }
 
+          await resolveSIEFiscalYear(supabase, companyId, parsed)
+          const delta = await planSIEResync(supabase,companyId,ctx.userId,parsed,mappings,options.voucherSeries)
+          // A comparison with no new vouchers never needs a write or an open
+          // period. Return current reviews even for an identical archived file.
+          if (delta && delta.added === 0) {
+            return NextResponse.json({result:{success:true,importId:null,fiscalPeriodId:delta.periodId,
+              openingBalanceEntryId:null,journalEntriesCreated:0,journalEntryIds:[],errors:[],
+              warnings:artifactScan.flagged ? [formatSieArtifactWarning(artifactScan)] : [],
+              resync:{added:delta.added,unchanged:delta.unchanged,reviewCount:delta.reviewCount,
+                reviews:delta.reviews,metadataChanged:delta.metadataChanged},
+              details:{fiscalYear:{start:parsed.stats.fiscalYearStart!,end:parsed.stats.fiscalYearEnd!},retriedBatches:0,failedBatches:0}}})
+          }
           const job = await submitSIEJob(supabase,companyId,ctx.userId,rawContent,mappings,{
             filename: 'migration-sie-'+parsed.stats.fiscalYearStart+'.se',
             ...options,updateAccountNames:options.updateAccountNames ?? true,
-            onExistingPeriod:options.supersedesImportId ? 'replace' : 'block',
-          },originalFile,'provider_migration',{source:'migration',via:'provider_migration',
-            fetchedBy:{type:'user',user_id:ctx.userId,label:'provider-migration'}})
+            ...(delta ? {importOpeningBalances:false,importTransactions:true} : {}),
+            supersedesImportId:undefined,
+            onExistingPeriod:delta ? 'incremental' : 'block',
+          },originalFile,'provider_migration',{source:'migration',via:'provider_migration',fetchedBy:{type:'user',user_id:ctx.userId,label:'provider-migration'}})
+
           after(async () => { await runSIEWorker({importId:job.id}) })
           return NextResponse.json({importId:job.id,state:job.job_state,
             warnings:artifactScan.flagged ? [formatSieArtifactWarning(artifactScan)] : [],
@@ -2152,17 +2232,20 @@ export const arcimMigrationExtension: Extension = {
 
         let consentId: string | undefined
         let dryRun = false
+        let progress = false
         let cursor: string | null = null
         let run: string | null = null
         try {
           const body = (await request.json()) as {
             consentId?: string
             dryRun?: boolean
+            progress?: boolean
             cursor?: string
             run?: string
           }
           consentId = body?.consentId
           dryRun = body?.dryRun === true
+          progress = body?.progress === true
           // Resume point from a previous partial call (the last handled
           // provider attachment id, see import-documents.ts); anything else
           // restarts from the top, which is always safe: already-archived
@@ -2251,8 +2334,10 @@ export const arcimMigrationExtension: Extension = {
         // another tab moved meanwhile is not counted twice.
         const ownRun = cursor !== null && run !== null && kept?.startedAt === run ? kept : null
 
+        const execute = async (onProgress?: Parameters<typeof importProviderDocuments>[0]['onProgress']) => {
         try {
           const result = await importProviderDocuments({
+            onProgress,
             supabase,
             companyId,
             userId: ctx.userId,
@@ -2354,6 +2439,7 @@ export const arcimMigrationExtension: Extension = {
             log.warn('arcim import-documents could not refresh the connection', { code: error.code, cursor })
             return providerFailureResponse(error, 'PROVIDER_IMPORT_DOCUMENTS_FAILED')
           }
+
           // "400 Bad Request" alone told us nothing when a live Fortnox
           // discovery failed (2026-08-20): keep status, Fortnox's own
           // message and a body excerpt in the log, and hand the message
@@ -2387,6 +2473,18 @@ export const arcimMigrationExtension: Extension = {
             },
           })
         }
+
+        }
+        if (progress && !dryRun) return streamDocumentImport(async onProgress => {
+          const response = await execute(onProgress)
+          if (!response.ok) throw Object.assign(new Error('Document import failed'),{response})
+          const body = await response.json()
+          return body.result
+        }, error => error && typeof error === 'object' && 'response' in error
+          ? (error as {response:Response}).response
+          : errorResponseFromCode('PROVIDER_IMPORT_DOCUMENTS_FAILED',moduleLog))
+        return execute()
+
       },
     },
 
@@ -2406,7 +2504,7 @@ export const arcimMigrationExtension: Extension = {
         // Verify consent belongs to this company before mutating
         const { data: consent } = await supabase
           .from('provider_consents')
-          .select('id')
+          .select('id,provider')
           .eq('id', consentId)
           .eq('company_id', companyId)
           .single()
@@ -2417,7 +2515,11 @@ export const arcimMigrationExtension: Extension = {
 
         try {
           await acceptConsent(consentId)
-          return NextResponse.json({ success: true })
+          // Also covers SIE-only runs, which have no register worker.
+          const skattekonto = consent.provider === 'bokio'
+            ? await matchImportedSkattekonto(supabase, companyId, ctx.userId)
+            : undefined
+          return NextResponse.json({ success: true, ...(skattekonto ? { skattekonto } : {}) })
         } catch (error) {
           moduleLog.error('arcim accept failed', error as Error, { consentId })
           return errorResponseFromCode('PROVIDER_ACCEPT_FAILED', moduleLog, {
@@ -2474,4 +2576,25 @@ export const arcimMigrationExtension: Extension = {
   ],
 
   eventHandlers: [],
+}
+
+/** The picker can split years across requests; refusals never include provider payloads. */
+function sieRequestLimitResponse(error: SieRequestLimitError) {
+  return errorResponseFromCode('VALIDATION_ERROR', moduleLog, {
+    messageSv: error.field === 'years'
+      ? `Välj högst ${error.limit} räkenskapsår per omgång. Importera övriga år i nästa omgång.`
+      : 'SIE-filerna är för stora för en omgång. Välj färre år eller importera filen separat.',
+    messageEn: error.field === 'years'
+      ? `Select at most ${error.limit} fiscal years per batch. Import the remaining years in the next batch.`
+      : 'The SIE exports are too large for one batch. Select fewer years or import the file separately.',
+    details: { field: error.field, limit: error.limit },
+  })
+}
+
+/** Synchronous parsing is bounded by file size; checkpoints cover both sides of that work. */
+function parseProviderSIE(rawContent: string) {
+  checkExecutionBudget()
+  const parsed = parseSIEFile(rawContent)
+  checkExecutionBudget()
+  return parsed
 }
