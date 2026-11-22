@@ -24,6 +24,9 @@ checkout-specific resource prefix. Other Supabase installations are independent.
 Image tags are pinned in `scripts/e2e/stack.mjs`.
 The production build uses an 8 GiB V8 heap limit, matching the repository's
 typecheck tooling. The application server uses a 4 GiB limit.
+As in the existing core build job, this browser build sets SKIP_BUILD_TYPECHECK=1;
+the separate CI typecheck job remains responsible for the type ratchet.
+A passing browser run does not imply that the typecheck passed.
 
 ```sh
 npm run test:e2e:prepare                  # Stack, migrations, fixture, production build

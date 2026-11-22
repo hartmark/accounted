@@ -38,7 +38,9 @@ async function build(state) {
   console.log('Building an isolated production app. Details in .e2e/build.log')
   try {
     await run('npm', ['run', 'build'], {
-      cwd: snapshot, env: { ...appEnv(state), NODE_OPTIONS: '--max-old-space-size=8192' },
+      // CI's dedicated type ratchet owns type checking, as in the core build job.
+      // The browser job measures the built app instead of repeating that expensive pass.
+      cwd: snapshot, env: { ...appEnv(state), SKIP_BUILD_TYPECHECK: '1', NODE_OPTIONS: '--max-old-space-size=8192' },
       stdio: ['ignore', log, log],
     })
   }
