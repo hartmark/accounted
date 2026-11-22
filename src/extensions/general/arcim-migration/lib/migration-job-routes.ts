@@ -1,3 +1,4 @@
+import { resolveMigrationNoops } from './migration-noop-review'
 import { decideMigrationRecord } from './migration-record-decision'
 import { readMigrationExtraDetails } from './migration-status-details'
 import { readMigrationSkipReasons, readPendingImportPayables } from './migration-result-details'
@@ -347,7 +348,10 @@ export const migrationJobRoutes: ApiRouteDefinition[] = [
         logRefusal(ctx, createError, body.data.consentId)
         return registryRefusal(failureCode(new Error(createError.message)), 409)
       }
-      after(async () => { await runProviderMigrationWorker({ jobId: job.id }).catch(e => ctx.log.error('provider worker nudge failed', e)) })
+      after(async () => {
+        await runProviderMigrationWorker({ jobId: job.id }).catch(e => ctx.log.error('provider worker nudge failed', e))
+        await resolveMigrationNoops(createServiceClientNoCookies(), job).catch(e => ctx.log.error('Automatic review deferred', e))
+      })
       return NextResponse.json({ data: { jobId: job.id } }, { status: 202 })
     },
   },
@@ -389,7 +393,10 @@ export const migrationJobRoutes: ApiRouteDefinition[] = [
         })
         if (retryError) return error('MIGRATION_RETRY_FAILED', 409)
       }
-      after(async () => { await runProviderMigrationWorker({ jobId: job.id }).catch(e => ctx.log.error('provider worker nudge failed', e)) })
+      after(async () => {
+        await runProviderMigrationWorker({ jobId: job.id }).catch(e => ctx.log.error('provider worker nudge failed', e))
+        await resolveMigrationNoops(createServiceClientNoCookies(), job).catch(e => ctx.log.error('Automatic review deferred', e))
+      })
       return NextResponse.json({ data: { jobId: job.id } }, { status: 202 })
     },
   })),

@@ -1,3 +1,4 @@
+import { resolveMigrationNoops } from './migration-noop-review'
 import { SOURCE_HASH_BATCH_SIZE, sourceHashBaselines } from './migration-source-hashes'
 import { applyMigrationInvoiceCorrection } from '@/lib/providers/migration-corrections'
 import { randomUUID, createHash } from 'node:crypto'
@@ -870,6 +871,12 @@ export async function runProviderMigrationWorker(options: {
           const chunks = (rows ?? []) as MigrationChunk[]
           if (!chunks.length) {
             await migrationRpc(supabase, job, 'advance_provider_migration_job', {}, deadline - 5000)
+            // The final advance releases the lease, so the subsequent lease-scoped
+            // read deliberately finds no row. Resolve equivalent outcomes first.
+            if (job.phase === 'settle') {
+              await resolveMigrationNoops(supabase, { ...job, phase: 'completed', state: 'needs_attention' }, deadline - 5000)
+                .catch(() => { log.warn('Automatic review deferred', { jobId: job.id }) })
+            }
           }
           else if (job.phase === 'import') await importBatch(supabase, job, chunks, connection, deadline - 5000, () => { moved = true })
           else await withinMigrationDeadline(followupBatch(supabase, job, chunks, deadline - 5000), deadline - 5000)
