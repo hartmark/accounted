@@ -289,7 +289,18 @@ export const migrationJobRoutes: ApiRouteDefinition[] = [
         .select('id,review_deferred_at,state').eq('company_id', ctx.companyId)
         .not('review_deferred_at', 'is', null).order('review_deferred_at', { ascending: false }).limit(50)
       if (readError) return error('MIGRATION_LOOKUP_FAILED', 500)
-      return NextResponse.json({ data: data ?? [] }, { headers: { 'Cache-Control': 'no-store' } })
+      const reviews = data ?? []
+      // A completed import can still have missing VAT. Keep that review reachable after reload.
+      const latest = await readJob(ctx)
+      if (latest?.phase === 'completed' && !reviews.some(row => row.id === latest.id)) {
+        const { data: warning, error: warningError } = await ctx.supabase.from('migration_job_chunks').select('id')
+          .eq('company_id', ctx.companyId).eq('job_id', latest.id)
+          .eq('receipt->warnings->>vatUnresolved', 'true').not('target_id', 'is', null).limit(1)
+        if (warningError) return error('MIGRATION_LOOKUP_FAILED', 500)
+        if (warning?.length) reviews.unshift({ id: latest.id, state: latest.state,
+          review_deferred_at: latest.review_deferred_at ?? latest.created_at })
+      }
+      return NextResponse.json({ data: reviews }, { headers: { 'Cache-Control': 'no-store' } })
     },
   },
   {

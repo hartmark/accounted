@@ -335,3 +335,14 @@ it('lists each excluded invoice and its recorded reason without exposing its sou
   expect(db.findCalls('migration_job_chunks','eq')).toContainEqual(['job_id',id])
   expect(db.findCalls('migration_job_chunks','eq')).toContainEqual(['state','skipped'])
 })
+
+it('keeps the latest completed VAT review reachable after reloading the import page', async () => {
+  const mock = createQueuedMockSupabase()
+  mock.enqueueMany([{ data: [] }, { data: { id, state: 'completed', phase: 'completed', created_at: '2026-11-22T17:29:00Z' } },
+    { data: [{ id: 'vat-record' }] }])
+  const ctx = { supabase: mock.supabase, companyId: 'company', userId: 'user' } as unknown as ExtensionContext
+  const response = await route('GET', '/migration-jobs/reviews')(new Request('http://localhost/reviews'), ctx)
+  expect(response.status).toBe(200)
+  expect((await response.json()).data).toEqual([{ id, state: 'completed', review_deferred_at: '2026-11-22T17:29:00Z' }])
+  expect(mock.findCalls('migration_job_chunks', 'eq')).toContainEqual(['company_id', 'company'])
+})
