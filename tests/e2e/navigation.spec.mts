@@ -26,7 +26,7 @@ const destinations: { path: string; ready: (page: Page) => Promise<unknown> }[] 
   { path: '/accounts', ready: page => page.getByText('Inga konton kopplade än.', { exact: false }).waitFor({ state: 'visible' }) },
   { path: '/salary', ready: page => page.getByRole('link', { name: 'Lägg till anställd', exact: true }).waitFor({ state: 'visible' }) },
   { path: '/settings/company', ready: page => expect(page.locator('input[name="company_name"]')).toHaveValue('E2E Ten Year Consulting AB') },
-  { path: '/import', ready: page => expect(page.getByRole('button', { name: /^SIE-fil/ })).toBeEnabled() },
+  { path: '/import', ready: page => expect(page.getByRole('button', { name: /^(?:Importera: )?SIE-fil/ })).toBeEnabled() },
   { path: '/transactions', ready: async page => {
     await page.getByRole('tab', { name: 'Alla', exact: true }).click()
     await page.getByText(/^Synthetic bank transaction \d+$/).filter({ visible: true }).first().waitFor({ state: 'visible' })
@@ -71,7 +71,7 @@ test('supplier search and detail remain responsive with a full register', async 
 
 test('account search finds accounts beyond the first rendered page', async ({ page }, info) => {
   await page.goto('/chart-of-accounts')
-  const search = page.getByPlaceholder('Sök konto (nummer eller namn)...')
+  const search = page.getByPlaceholder('Sök konto', { exact: true })
   await expect(search).toBeEnabled()
   // The input is enabled before the initial chart request has completed.
   await destinations[6].ready(page)

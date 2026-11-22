@@ -63,6 +63,8 @@ export function appEnv(state) {
     CRON_SECRET: state.cronSecret,
     SIE_IMPORT_JOBS: 'true',
     SIE_IMPORT_CHUNK_AUDIT: 'true',
+    // Reserved domain for the real inbox-address UI; no delivery credentials.
+    RESEND_INBOUND_DOMAIN: 'example.invalid',
     AWS_EC2_METADATA_DISABLED: 'true',
   }
 }

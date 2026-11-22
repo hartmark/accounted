@@ -69,7 +69,8 @@ All state, generated credentials, the source snapshot, server/build logs and JSO
 timings are under ignored `.e2e/`. Playwright traces and screenshots are retained
 on failure under ignored `test-results/`. Reports are under `playwright-report/`.
 The source snapshot excludes `.env*` and `deploy/`, and the app receives an
-explicit environment containing only generated test credentials. Test tools
+explicit environment containing only generated test credentials. The inbox
+address UI uses the reserved example.invalid domain without delivery credentials. Test tools
 reject non-loopback endpoints and refuse to reset containers without this
 checkout's ownership label. No script loads `.env.local`.
 
