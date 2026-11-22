@@ -1,5 +1,9 @@
+import { createQueuedMockSupabase } from '@/tests/helpers'
+import { mapBokioToSupplierInvoice } from '@/lib/providers/bokio/mapper'
+import { enrichBokioSupplierInvoice } from '@/lib/providers/bokio/supplier-evidence'
+import { mapSupplierInvoice } from '../entity-mapper'
 import { describe, it, expect } from 'vitest'
-import { compareMigrationFields, compareMigrationInvoiceItems } from '../migration-field-differences'
+import { compareMigrationFields, compareMigrationInvoiceItems, readMigrationFieldDifferences } from '../migration-field-differences'
 
 describe('migration field differences', () => {
   it('shows source on the left and actual Accounted values on the right', () => {
@@ -64,4 +68,18 @@ describe('Bokio invoice row order', () => {
   it('does not change other providers row ordering rules', () => {
     expect(compareMigrationInvoiceItems([charged,note],[note,charged],'fortnox').length).toBeGreaterThan(0)
   })
+})
+
+it('does not propose replacing reviewed document VAT with a missing API value on the next sync', async () => {
+  const dto = enrichBokioSupplierInvoice(mapBokioToSupplierInvoice({
+    id: 'source', invoiceNumber: '1103', invoiceDate: '2026-10-29', dueDate: '2026-11-28',
+    currency: 'SEK', totalAmount: 763.2, remainingAmount: 763.2,
+    supplierRef: { id: 'supplier', name: 'Supplier' },
+    lineItems: [{ quantity: 3, unitPrice: 240, description: 'Beans', taxRate: null }],
+  }))
+  const local = { ...mapSupplierInvoice(dto, '', 'company', '').invoice,
+    subtotal: 720, vat_amount: 43.2 }
+  const db = createQueuedMockSupabase()
+  db.enqueueMany([{ data: local }, { data: [] }])
+  expect(await readMigrationFieldDifferences(db.supabase as never, 'company', 'supplierInvoices', 'invoice', dto, undefined, 'bokio')).toEqual([])
 })

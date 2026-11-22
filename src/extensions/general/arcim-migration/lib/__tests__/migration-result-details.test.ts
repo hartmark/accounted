@@ -1,6 +1,6 @@
 import {describe,it,expect} from 'vitest'
 import {createQueuedMockSupabase} from '@/tests/helpers'
-import {readMigrationSkipReasons,readPendingImportPayables} from '../migration-result-details'
+import {readMigrationSkipReasons,readPendingImportPayables,readMigrationVatWarnings} from '../migration-result-details'
 describe('migration result details',()=>{
   it('keeps the historical exclusion distinct from unchanged and unknown receipt reasons',async()=>{
     const db=createQueuedMockSupabase();db.enqueue({data:[{resource:'salesInvoices',receipt:{reason:'historical_receivable'}},{resource:'supplierInvoices',receipt:{reason:'outsideFiscalYears'}},{resource:'customers',receipt:{reason:'unknown'}}]})
@@ -20,4 +20,24 @@ describe('migration result details',()=>{
     expect(await readPendingImportPayables(db.supabase as never,'company','job','2026-11-08')).toEqual({count:0,items:[]})
     expect(db.supabase.from).toHaveBeenCalledTimes(1)
   })
+})
+
+it('lists the exact VAT-warning invoice, including an unbooked invoice without a local attachment', async () => {
+  const db = createQueuedMockSupabase()
+  db.enqueueMany([{ data: [{ id: 'record', resource: 'supplierInvoices', target_id: 'invoice' }] },
+    { data: [{ id: 'invoice', supplier_invoice_number: '1103', invoice_date: '2026-10-29', total: 763.2,
+      currency: 'SEK', updated_at: 'revision', status: 'registered', party: { name: 'Supplier' }, items: [] }] }])
+  expect(await readMigrationVatWarnings(db.supabase as never, 'company', 'job')).toMatchObject([
+    { id: 'record', targetId: 'invoice', invoiceNumber: '1103', partyName: 'Supplier', total: 763.2, canConfirm: true },
+  ])
+  expect(db.findCalls('migration_job_chunks', 'eq')).toContainEqual(['company_id', 'company'])
+  expect(db.findCalls('migration_job_chunks', 'eq')).toContainEqual(['job_id', 'job'])
+  expect(db.findCalls('supplier_invoices', 'eq')).toContainEqual(['company_id', 'company'])
+})
+it('keeps booked supplier invoices visible without offering a header rewrite', async () => {
+  const db = createQueuedMockSupabase()
+  db.enqueueMany([{ data: [{ id: 'record', resource: 'supplierInvoices', target_id: 'invoice' }] },
+    { data: [{ id: 'invoice', invoice_date: '2026-10-29', total: 100, currency: 'SEK', status: 'registered',
+      registration_journal_entry_id: 'posted', party: { name: 'Supplier' }, items: [] }] }])
+  expect(await readMigrationVatWarnings(db.supabase as never, 'company', 'job')).toMatchObject([{ canConfirm: false }])
 })

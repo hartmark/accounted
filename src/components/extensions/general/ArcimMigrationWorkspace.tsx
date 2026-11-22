@@ -1,6 +1,7 @@
 'use client'
 
 import { SIEJobFailedError, uploadSIEFile, waitForSIEJob } from '@/lib/import/sie-job-client'
+import MigrationVatReview from './MigrationVatReview'
 import InvoiceCompletionRecovery from './InvoiceCompletionRecovery'
 import { describeImportResponseFailure, formatImportFailure } from '@/lib/import/import-failure'
 import { createContext, useState, useCallback, useContext, useEffect, useReducer, useRef } from 'react'
@@ -3455,6 +3456,9 @@ export function ResultStep({
         </section>
       )}
 
+      {review?.status && <MigrationVatReview items={review.status.vatWarnings ?? []}
+        jobId={review.status.job.id} provider={review.status.job.provider} onUpdated={onReviewUpdated} />}
+
       {review?.status && <section className="space-y-3">{review.status.counts.filter(row=>row.skipped > 0).map(row=><MigrationSkippedRecords key={row.resource} status={review.status!} resource={row.resource}/>)}</section>}
 
       {/* ── Records the accepted provider import left for review ── */}
@@ -5052,7 +5056,7 @@ export default function ArcimMigrationWorkspace({
               if (!previous) return previous
               const next = { ...previous }
               for (const row of status.counts) next[row.resource] = { ...next[row.resource], total: row.total,
-                imported: row.imported, skipped: row.skipped, unchanged: row.unchanged }
+                imported: row.imported, skipped: row.skipped, unchanged: row.unchanged, vatUnresolved: row.vat_unresolved }
               return next
             })
           }}

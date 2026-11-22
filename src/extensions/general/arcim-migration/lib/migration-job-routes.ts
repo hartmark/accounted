@@ -1,7 +1,9 @@
+import { readMigrationVatDocument } from './migration-vat-document'
+import { confirmMigrationVat } from './migration-vat-review'
 import { resolveMigrationNoops } from './migration-noop-review'
 import { decideMigrationRecord } from './migration-record-decision'
 import { readMigrationExtraDetails } from './migration-status-details'
-import { readMigrationSkipReasons, readPendingImportPayables } from './migration-result-details'
+import { readMigrationSkipReasons, readPendingImportPayables, readMigrationVatWarnings } from './migration-result-details'
 import { ownInvoiceNumber, invoicePartyName } from './invoice-review-labels'
 export { ownInvoiceNumber, invoicePartyName } from './invoice-review-labels'
 import { after, NextResponse } from 'next/server'
@@ -263,7 +265,9 @@ export async function readMigrationStatus(ctx: ExtensionContext, jobId?: string)
   const extra = reviewable && job.phase === 'completed' ? await readMigrationExtraDetails(ctx.supabase,ctx.companyId,job,resourceCounts) : {comparisons:new Map(),changes:[],skipped:[]}
   const skipReasons = reviewable && job.phase === 'completed' ? await readMigrationSkipReasons(ctx.supabase,ctx.companyId,job.id) : {}
   const paymentsAwaitingDueDate = job.phase === 'completed' ? await readPendingImportPayables(ctx.supabase,ctx.companyId,job.id) : undefined
-  return { job, counts: resourceCounts.map(row=>({...row,skipReasons:skipReasons[row.resource]})),
+  const vatWarnings = reviewable && resourceCounts.some(row => Number(row.vat_unresolved) > 0)
+    ? await readMigrationVatWarnings(ctx.supabase, ctx.companyId, job.id) : []
+  return { job, vatWarnings, counts: resourceCounts.map(row=>({...row,skipReasons:skipReasons[row.resource]})),
     issues:issues.map(issue=>({...issue,...extra.comparisons.get(issue.id),
       invoiceNumber:issue.label?.number ?? undefined, partyName:issue.label?.party ?? undefined,
       invoiceDate:issue.label?.date ?? undefined, amount:issue.label?.amount ?? undefined,
@@ -274,6 +278,8 @@ export async function readMigrationStatus(ctx: ExtensionContext, jobId?: string)
 }
 
 export const migrationJobRoutes: ApiRouteDefinition[] = [
+  { method: 'POST', path: '/migration-jobs/vat', handler: confirmMigrationVat },
+  { method: 'GET', path: '/migration-jobs/vat-document', handler: readMigrationVatDocument },
   { method: 'POST', path: '/migration-jobs/decision', handler: decideMigrationRecord },
   {
     method: 'GET', path: '/migration-jobs/reviews',

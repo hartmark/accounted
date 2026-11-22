@@ -22022,5 +22022,15 @@
     "empty_title": "No periods to accrue",
     "empty_opens_on": "Accruals are made once the fiscal year has ended. This step opens on {date}.",
     "empty_all_closed": "Accruals are made once the fiscal year has ended. Every fiscal year already has its closing or is closed."
-  }
+  },
+  "ext_arcim_vat_no_number": "Invoice without number",
+  "ext_arcim_vat_amount": "VAT amount on the document (SEK)",
+  "ext_arcim_vat_rate": "VAT rate on the document",
+  "ext_arcim_vat_select": "Select VAT rate",
+  "ext_arcim_vat_confirm": "Confirm VAT from the document",
+  "ext_arcim_vat_protected": "Open the invoice to review its document. It cannot be changed here because it has invoice lines, is booked, approved or paid.",
+  "ext_arcim_vat_refused": "VAT could not be saved. Check the amount and rate, and reopen the import if the invoice changed. Mixed VAT needs review on the invoice.",
+  "ext_arcim_vat_show": "Review VAT on {count} invoices",
+  "ext_arcim_vat_explanation": "The source API omitted VAT. Open the invoice and check the original document before confirming the VAT amount and rate. Only unpaid, unbooked supplier invoices without lines can be completed here. Bookkeeping is unchanged.",
+  "ext_arcim_vat_document": "Open the original document from Bokio"
 }

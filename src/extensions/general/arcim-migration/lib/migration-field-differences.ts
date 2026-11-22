@@ -48,7 +48,9 @@ export async function readMigrationFieldDifferences(db: SupabaseClient, companyI
   }
   const mapped = sales ? mapSalesInvoice(dto as SalesInvoiceDto, '', companyId, '')
     : mapSupplierInvoice(dto as SupplierInvoiceDto, '', companyId, '')
-  const result = compareMigrationFields(mapped.invoice, local, invoiceFields)
+  // Missing VAT is unknown, not evidence that a reviewed document's VAT is zero.
+  const fields = mapped.vatUnresolved ? invoiceFields.filter(field => field !== 'subtotal' && field !== 'vat_amount') : invoiceFields
+  const result = compareMigrationFields(mapped.invoice, local, fields)
   const key = sales ? 'invoice_id' : 'supplier_invoice_id'
   // The company-scoped parent above authorizes these child rows.
   const items = await fetchAllRows<Record<string, unknown>>(({ from, to }) => db

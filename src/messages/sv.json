@@ -22022,5 +22022,15 @@
     "empty_title": "Inga perioder att periodisera",
     "empty_opens_on": "Periodiseringar görs efter att räkenskapsårets slutdatum har passerat. Steget öppnar {date}.",
     "empty_all_closed": "Periodiseringar görs efter att räkenskapsårets slutdatum har passerat. Alla räkenskapsår har redan sitt bokslut eller är stängda."
-  }
+  },
+  "ext_arcim_vat_no_number": "Faktura utan nummer",
+  "ext_arcim_vat_amount": "Momsbelopp enligt underlaget (kr)",
+  "ext_arcim_vat_rate": "Momssats enligt underlaget",
+  "ext_arcim_vat_select": "Välj momssats",
+  "ext_arcim_vat_confirm": "Bekräfta moms från underlaget",
+  "ext_arcim_vat_protected": "Öppna fakturan för att granska underlaget. Den kan inte ändras här eftersom den har fakturarader, är bokförd, attesterad eller betald.",
+  "ext_arcim_vat_refused": "Momsen kunde inte sparas. Kontrollera beloppet och momssatsen, och öppna importen igen om fakturan har ändrats. Blandad moms behöver granskas på fakturan.",
+  "ext_arcim_vat_show": "Granska moms på {count} fakturor",
+  "ext_arcim_vat_explanation": "Källsystemets API saknar momsuppgifter. Öppna fakturan och kontrollera originalunderlaget innan du bekräftar momsbelopp och momssats. Endast obetalda och obokförda leverantörsfakturor utan rader kan kompletteras här. Bokföringen ändras inte.",
+  "ext_arcim_vat_document": "Öppna originalunderlaget från Bokio"
 }

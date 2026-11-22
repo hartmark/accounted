@@ -186,7 +186,21 @@ export interface MigrationFieldDifference {
   currency?: string
 }
 
+export interface MigrationVatWarning {
+  id: string
+  resource: 'supplierInvoices' | 'salesInvoices'
+  targetId: string
+  invoiceNumber: string | null
+  partyName: string
+  invoiceDate: string
+  total: number
+  currency: string
+  updatedAt: string
+  canConfirm: boolean
+}
+
 export interface ProviderMigrationStatus {
+  vatWarnings?: MigrationVatWarning[]
   skipped?: { id: string; resource: MigrationResource; source_id: string; reason: string;
     invoiceNumber?: string; partyName?: string; invoiceDate?: string; amount?: number; currency?: string; targetId?: string | null }[]
   paymentsAwaitingDueDate?: PendingImportPayables
