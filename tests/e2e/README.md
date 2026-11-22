@@ -18,12 +18,15 @@ npx playwright install chromium
 npm run test:e2e
 ```
 
-Linux, Node.js 22 or later and rootless Podman must be available. CI uses Node.js 26, matching
-the self-hosted development runtime. The stack uses loopback ports 54331 and 3101, and a
+Linux, Node.js 22 or later and rootless Podman must be available. CI uses Node.js 24, matching
+the existing upstream workflows. The stack uses loopback ports 54331 and 3101, and a
 checkout-specific resource prefix. Other Supabase installations are independent.
 Image tags are pinned in `scripts/e2e/stack.mjs`.
 The production build uses an 8 GiB V8 heap limit, matching the repository's
 typecheck tooling. The application server uses a 4 GiB limit.
+As in the existing core build job, this browser build sets SKIP_BUILD_TYPECHECK=1;
+the separate CI typecheck job remains responsible for the type ratchet.
+A passing browser run does not imply that the typecheck passed.
 
 ```sh
 npm run test:e2e:prepare                  # Stack, migrations, fixture, production build
@@ -66,7 +69,8 @@ All state, generated credentials, the source snapshot, server/build logs and JSO
 timings are under ignored `.e2e/`. Playwright traces and screenshots are retained
 on failure under ignored `test-results/`. Reports are under `playwright-report/`.
 The source snapshot excludes `.env*` and `deploy/`, and the app receives an
-explicit environment containing only generated test credentials. Test tools
+explicit environment containing only generated test credentials. The inbox
+address UI uses the reserved example.invalid domain without delivery credentials. Test tools
 reject non-loopback endpoints and refuse to reset containers without this
 checkout's ownership label. No script loads `.env.local`.
 
@@ -86,7 +90,15 @@ Skatteverket is disabled in the isolated preset. Its two status/transaction
 reads may return 503 only with the explicit `EXTENSION_DISABLED` code. The
 report records that expected integration state. Other server errors still fail.
 
-The GUI integration cases run when the companion navigation/ledger UI module is
-present in the checkout. The performance PR can run its core navigation suite
-independently; the combined branch also exercises the GUI PR's folding, mobile
-headers and nested menu behavior.
+Operator-specific navigation and layout cases remain in the combined integration
+branch. This proposal focuses on the core browser and latency suite.
+
+The three server-seeded voucher regressions run when the separate performance
+contribution is present. They are explicitly skipped on main until that code lands.
+This test contribution does not change application behavior.
+
+## Operator combination
+
+This combined branch also retains gui.spec.mts and mobile-layout.ts for the
+operator-specific navigation and layout features. Those cases run when
+NavTreeSection is present and are omitted from the parked core-suite proposal.

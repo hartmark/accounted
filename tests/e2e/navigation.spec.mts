@@ -26,7 +26,7 @@ const destinations: { path: string; ready: (page: Page) => Promise<unknown> }[] 
   { path: '/accounts', ready: page => page.getByText('Inga konton kopplade än.', { exact: false }).waitFor({ state: 'visible' }) },
   { path: '/salary', ready: page => page.getByRole('link', { name: 'Lägg till anställd', exact: true }).waitFor({ state: 'visible' }) },
   { path: '/settings/company', ready: page => expect(page.locator('input[name="company_name"]')).toHaveValue('E2E Ten Year Consulting AB') },
-  { path: '/import', ready: page => expect(page.getByRole('button', { name: /^SIE-fil/ })).toBeEnabled() },
+  { path: '/import', ready: page => expect(page.getByRole('button', { name: /^(?:Importera: )?SIE-fil/ })).toBeEnabled() },
   { path: '/transactions', ready: async page => {
     await page.getByRole('tab', { name: 'Alla', exact: true }).click()
     await page.getByText(/^Synthetic bank transaction \d+$/).filter({ visible: true }).first().waitFor({ state: 'visible' })
@@ -71,7 +71,7 @@ test('supplier search and detail remain responsive with a full register', async 
 
 test('account search finds accounts beyond the first rendered page', async ({ page }, info) => {
   await page.goto('/chart-of-accounts')
-  const search = page.getByPlaceholder('Sök konto (nummer eller namn)...')
+  const search = page.getByPlaceholder('Sök konto', { exact: true })
   await expect(search).toBeEnabled()
   // The input is enabled before the initial chart request has completed.
   await destinations[6].ready(page)
@@ -101,111 +101,116 @@ test('authenticated client navigation can return to cached registers', async ({ 
   })
 })
 
-test('journal entry details render before their background refresh within budget', async ({ page }, info) => {
-  const response = await page.request.get('/api/bookkeeping/journal-entries?status=posted&limit=1&include_related=false')
-  expect(response.ok()).toBe(true)
-  const entry = (await response.json()).data[0]
-  expect(entry.id).toBeTruthy()
-  const detailRequests: string[] = []
-  page.on('request', request => {
-    const path = new URL(request.url()).pathname
-    if (path.startsWith(`/api/bookkeeping/journal-entries/${entry.id}/`)) detailRequests.push(path)
+test.describe('server-seeded voucher details', () => {
+  test.skip(!existsSync(path.join(root, 'src/lib/bookkeeping/journal-entry-detail.ts')),
+    'Requires the separate voucher-detail performance contribution')
+
+  test('journal entry details render before their background refresh within budget', async ({ page }, info) => {
+    const response = await page.request.get('/api/bookkeeping/journal-entries?status=posted&limit=1&include_related=false')
+    expect(response.ok()).toBe(true)
+    const entry = (await response.json()).data[0]
+    expect(entry.id).toBeTruthy()
+    const detailRequests: string[] = []
+    page.on('request', request => {
+      const path = new URL(request.url()).pathname
+      if (path.startsWith(`/api/bookkeeping/journal-entries/${entry.id}/`)) detailRequests.push(path)
+    })
+    let releaseRefresh!: () => void
+    const heldRefresh = new Promise<void>(resolve => { releaseRefresh = resolve })
+    await page.route(`**/api/bookkeeping/journal-entries/${entry.id}/detail`, async route => {
+      await heldRefresh
+      await route.continue()
+    })
+    const refreshed = page.waitForResponse(
+      response => new URL(response.url()).pathname.endsWith(`/${entry.id}/detail`),
+      { timeout: 15_000 },
+    ).catch(() => null)
+    const note = `E2E note before refresh ${info.project.name}`
+    await page.route(`**/api/bookkeeping/journal-entries/${entry.id}/notes`, route => route.fulfill({ json: { data: {} } }))
+    try {
+      await measured(info, 'Open journal entry details', BUDGET.navigation, async () => {
+        await page.goto(`/bookkeeping/${entry.id}`)
+        await page.getByRole('heading', { name: 'Kontorader', exact: true }).waitFor({ state: 'visible' })
+      })
+      // Editing immediately must work even before SWR's background read has
+      // populated its cache from the server-rendered seed.
+      await page.getByRole('button', { name: /^(?:Redigera|Lägg till) anteckning$/ }).click()
+      await page.getByPlaceholder('Intern anteckning...').fill(note)
+      await measured(info, 'Save note before background refresh', BUDGET.interaction, async () => {
+        await page.getByRole('button', { name: 'Spara', exact: true }).click()
+        await expect(page.getByText(note, { exact: true })).toBeVisible()
+      })
+    } finally { releaseRefresh() }
+    expect((await refreshed)?.ok()).toBe(true)
+    await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))))
+    await expect(page.getByText(note, { exact: true })).toBeVisible()
+    expect(detailRequests.filter(path => path.endsWith('/detail'))).toHaveLength(1)
+    expect(detailRequests.filter(path => /\/(chain|references|retag-log|rattelse-log)$/.test(path))).toHaveLength(0)
   })
-  let releaseRefresh!: () => void
-  const heldRefresh = new Promise<void>(resolve => { releaseRefresh = resolve })
-  await page.route(`**/api/bookkeeping/journal-entries/${entry.id}/detail`, async route => {
-    await heldRefresh
-    await route.continue()
+
+  test('voucher rows exist in server HTML without executing client JavaScript', async ({ page, browser }, info) => {
+    const response = await page.request.get('/api/bookkeeping/journal-entries?status=posted&limit=1&include_related=false')
+    expect(response.ok()).toBe(true)
+    const entry = (await response.json()).data[0]
+    const noJavaScript = await browser.newContext({ storageState: await page.context().storageState(), javaScriptEnabled: false, viewport: page.viewportSize() })
+    try {
+      const document = await noJavaScript.newPage()
+      await measured(info, 'Server-render voucher rows', BUDGET.navigation, async () => {
+        await document.goto(new URL(`/bookkeeping/${entry.id}`, response.url()).href)
+        await expect(document.locator('table tbody tr').first()).toBeAttached()
+      })
+    } finally { await noJavaScript.close() }
   })
-  const refreshed = page.waitForResponse(
-    response => new URL(response.url()).pathname.endsWith(`/${entry.id}/detail`),
-    { timeout: 15_000 },
-  ).catch(() => null)
-  const note = `E2E note before refresh ${info.project.name}`
-  await page.route(`**/api/bookkeeping/journal-entries/${entry.id}/notes`, route => route.fulfill({ json: { data: {} } }))
-  try {
-    await measured(info, 'Open journal entry details', BUDGET.navigation, async () => {
+
+  test('failed reference reads recover both voucher links and referenced attachments', async ({ page }, info) => {
+    const entries = await page.request.get('/api/bookkeeping/journal-entries?status=posted&limit=1&include_related=false')
+    expect(entries.ok()).toBe(true)
+    const entry = (await entries.json()).data[0]
+    const suppliers = await page.request.get('/api/supplier-invoices?limit=1')
+    expect(suppliers.ok()).toBe(true)
+    const invoice = (await suppliers.json()).data[0]
+    const documentId = 'edbe895e-cbc5-4b85-8f52-9c698d1b83e0'
+    let retries = 0
+    let documentReads = 0
+    let releaseFirstRead!: () => void
+    const firstReadHeld = new Promise<void>(resolve => { releaseFirstRead = resolve })
+    let firstReadStarted!: () => void
+    const firstReadRequested = new Promise<void>(resolve => { firstReadStarted = resolve })
+    await page.route(`**/api/bookkeeping/journal-entries/${entry.id}/detail`, async route => {
+      const response = await route.fetch()
+      const body = await response.json()
+      body.data.references = null
+      await route.fulfill({ response, json: body })
+    })
+    await page.route(`**/api/bookkeeping/journal-entries/${entry.id}/references`, async route => {
+      retries++
+      await firstReadRequested
+      await route.fulfill({ json: { data: { references: [{ type: 'supplier_invoice', id: invoice.id, number: 'E2E-RECOVERED', document_id: documentId }] } } })
+    })
+    await page.route(`**/api/documents?journal_entry_id=${entry.id}&current_only=true`, async route => {
+      const read = ++documentReads
+      if (read === 1) { firstReadStarted(); await firstReadHeld }
+      await route.fulfill({ json: { data: [] }, headers: { 'X-E2E-Document-Read': String(read) } })
+    })
+    await page.route(`**/api/documents/${documentId}`, route => route.fulfill({ json: { data: {
+      id: documentId, file_name: 'recovered-source-document.pdf', file_size_bytes: 128,
+      mime_type: 'application/pdf', storage_path: 'synthetic/recovered.pdf', created_at: '2026-01-01T00:00:00Z',
+    } } }))
+    await measured(info, 'Recover optional voucher references', BUDGET.navigation, async () => {
       await page.goto(`/bookkeeping/${entry.id}`)
       await page.getByRole('heading', { name: 'Kontorader', exact: true }).waitFor({ state: 'visible' })
+      await page.locator(`a[href="/supplier-invoices/${invoice.id}"]`).filter({ hasText: 'E2E-RECOVERED' }).waitFor({ state: 'visible' })
+      await page.getByText('recovered-source-document.pdf', { exact: true }).waitFor({ state: 'visible' })
+      const olderRead = page.waitForResponse(response => response.headers()['x-e2e-document-read'] === '1')
+      releaseFirstRead()
+      await olderRead
+      // Allow the late fetch and React update to settle before checking that
+      // an earlier empty read cannot erase the recovered source document.
+      await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))))
+      await expect(page.getByText('recovered-source-document.pdf', { exact: true })).toBeVisible()
     })
-    // Editing immediately must work even before SWR's background read has
-    // populated its cache from the server-rendered seed.
-    await page.getByRole('button', { name: 'Redigera anteckning', exact: true }).click()
-    await page.getByPlaceholder('Intern anteckning...').fill(note)
-    await measured(info, 'Save note before background refresh', BUDGET.interaction, async () => {
-      await page.getByRole('button', { name: 'Spara', exact: true }).click()
-      await expect(page.getByText(note, { exact: true })).toBeVisible()
-    })
-  } finally { releaseRefresh() }
-  expect((await refreshed)?.ok()).toBe(true)
-  await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))))
-  await expect(page.getByText(note, { exact: true })).toBeVisible()
-  expect(detailRequests.filter(path => path.endsWith('/detail'))).toHaveLength(1)
-  expect(detailRequests.filter(path => /\/(chain|references|retag-log|rattelse-log)$/.test(path))).toHaveLength(0)
-})
-
-test('voucher rows exist in server HTML without executing client JavaScript', async ({ page, browser }, info) => {
-  const response = await page.request.get('/api/bookkeeping/journal-entries?status=posted&limit=1&include_related=false')
-  expect(response.ok()).toBe(true)
-  const entry = (await response.json()).data[0]
-  const noJavaScript = await browser.newContext({ storageState: await page.context().storageState(), javaScriptEnabled: false, viewport: page.viewportSize() })
-  try {
-    const document = await noJavaScript.newPage()
-    await measured(info, 'Server-render voucher rows', BUDGET.navigation, async () => {
-      await document.goto(new URL(`/bookkeeping/${entry.id}`, response.url()).href)
-      await expect(document.locator('table tbody tr').first()).toBeAttached()
-    })
-  } finally { await noJavaScript.close() }
-})
-
-test('failed reference reads recover both voucher links and referenced attachments', async ({ page }, info) => {
-  const entries = await page.request.get('/api/bookkeeping/journal-entries?status=posted&limit=1&include_related=false')
-  expect(entries.ok()).toBe(true)
-  const entry = (await entries.json()).data[0]
-  const suppliers = await page.request.get('/api/supplier-invoices?limit=1')
-  expect(suppliers.ok()).toBe(true)
-  const invoice = (await suppliers.json()).data[0]
-  const documentId = 'edbe895e-cbc5-4b85-8f52-9c698d1b83e0'
-  let retries = 0
-  let documentReads = 0
-  let releaseFirstRead!: () => void
-  const firstReadHeld = new Promise<void>(resolve => { releaseFirstRead = resolve })
-  let firstReadStarted!: () => void
-  const firstReadRequested = new Promise<void>(resolve => { firstReadStarted = resolve })
-  await page.route(`**/api/bookkeeping/journal-entries/${entry.id}/detail`, async route => {
-    const response = await route.fetch()
-    const body = await response.json()
-    body.data.references = null
-    await route.fulfill({ response, json: body })
+    expect(retries).toBe(1)
   })
-  await page.route(`**/api/bookkeeping/journal-entries/${entry.id}/references`, async route => {
-    retries++
-    await firstReadRequested
-    await route.fulfill({ json: { data: { references: [{ type: 'supplier_invoice', id: invoice.id, number: 'E2E-RECOVERED', document_id: documentId }] } } })
-  })
-  await page.route(`**/api/documents?journal_entry_id=${entry.id}&current_only=true`, async route => {
-    const read = ++documentReads
-    if (read === 1) { firstReadStarted(); await firstReadHeld }
-    await route.fulfill({ json: { data: [] }, headers: { 'X-E2E-Document-Read': String(read) } })
-  })
-  await page.route(`**/api/documents/${documentId}`, route => route.fulfill({ json: { data: {
-    id: documentId, file_name: 'recovered-source-document.pdf', file_size_bytes: 128,
-    mime_type: 'application/pdf', storage_path: 'synthetic/recovered.pdf', created_at: '2026-01-01T00:00:00Z',
-  } } }))
-  await measured(info, 'Recover optional voucher references', BUDGET.navigation, async () => {
-    await page.goto(`/bookkeeping/${entry.id}`)
-    await page.getByRole('heading', { name: 'Kontorader', exact: true }).waitFor({ state: 'visible' })
-    await page.locator(`a[href="/supplier-invoices/${invoice.id}"]`).filter({ hasText: 'E2E-RECOVERED' }).waitFor({ state: 'visible' })
-    await page.getByText('recovered-source-document.pdf', { exact: true }).waitFor({ state: 'visible' })
-    const olderRead = page.waitForResponse(response => response.headers()['x-e2e-document-read'] === '1')
-    releaseFirstRead()
-    await olderRead
-    // Allow the late fetch and React update to settle before checking that
-    // an earlier empty read cannot erase the recovered source document.
-    await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))))
-    await expect(page.getByText('recovered-source-document.pdf', { exact: true })).toBeVisible()
-  })
-  expect(retries).toBe(1)
 })
 
 test.describe('password login', () => {

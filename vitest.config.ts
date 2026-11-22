@@ -105,7 +105,7 @@ const simProject = {
     globals: true,
     environment: 'node' as const,
     include: ['**/*.sim.test.ts'],
-    exclude: ['**/node_modules/**', '**/.claude/**', '**/.next/**'],
+    exclude: ['**/node_modules/**', '**/.claude/**', '**/.next/**', '**/.e2e/**'],
     setupFiles: ['tests/sim/setup.ts'],
     fileParallelism: false,
     testTimeout: 60000,
