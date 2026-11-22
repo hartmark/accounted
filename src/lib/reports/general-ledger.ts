@@ -197,7 +197,7 @@ export async function generateGeneralLedger(
 
   // Include accounts that carry a balance into the range but have no lines in it
   for (const [accNum, balance] of effectiveOpening) {
-    const carriesBalance = isActiveLedgerAccount({ closing_balance: Math.round(balance * 100) / 100, lines: [] })
+    const carriesBalance = isActiveLedgerAccount({ closing_balance: roundOre(balance), lines: [] })
     if (!accountLines.has(accNum) && (options?.includeInactive || carriesBalance)) {
       accountLines.set(accNum, [])
     }
