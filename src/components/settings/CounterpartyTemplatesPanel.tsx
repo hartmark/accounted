@@ -6,7 +6,7 @@ import { useTranslations } from 'next-intl'
 import { useState, useEffect, useCallback } from 'react'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
-import { EmptyState } from '@/components/ui/empty-state'
+import { EmptyState, LoadError } from '@/components/ui/empty-state'
 import { Input } from '@/components/ui/input'
 import { useToast } from '@/components/ui/use-toast'
 import { useViewerLock } from '@/components/ui/viewer-lock'
@@ -54,6 +54,9 @@ export function CounterpartyTemplatesPanel() {
 
   const [templates, setTemplates] = useState<CategorizationTemplate[]>([])
   const [isLoading, setIsLoading] = useState(true)
+  // The list could not be read: it says so in place of the rows, never the
+  // "no templates yet" state, which is only true after a real answer.
+  const [loadFailed, setLoadFailed] = useState(false)
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [editingId, setEditingId] = useState<string | null>(null)
@@ -63,16 +66,23 @@ export function CounterpartyTemplatesPanel() {
   const fetchTemplates = useCallback(async () => {
     try {
       const res = await fetch('/api/settings/counterparty-templates')
-      const json = await res.json()
-      if (json.data) {
-        setTemplates(json.data)
+      if (!res.ok) {
+        setLoadFailed(true)
+        return
       }
+      const json = await res.json()
+      if (!Array.isArray(json?.data)) {
+        setLoadFailed(true)
+        return
+      }
+      setTemplates(json.data)
+      setLoadFailed(false)
     } catch {
-      toast({ title: t('toast_fetch_failed'), variant: 'destructive' })
+      setLoadFailed(true)
     } finally {
       setIsLoading(false)
     }
-  }, [toast, t])
+  }, [])
 
   useEffect(() => {
     fetchTemplates()
@@ -150,6 +160,14 @@ export function CounterpartyTemplatesPanel() {
             <Skeleton key={i} className="h-4 w-full" />
           ))}
         </div>
+      ) : loadFailed && templates.length === 0 ? (
+        <LoadError
+          title={t('toast_fetch_failed')}
+          onRetry={() => {
+            setIsLoading(true)
+            void fetchTemplates()
+          }}
+        />
       ) : templates.length === 0 ? (
         <EmptyState
           icon={UsersIcon}

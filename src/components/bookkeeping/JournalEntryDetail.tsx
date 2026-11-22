@@ -43,7 +43,7 @@ import { formatCurrency, formatDate } from '@/lib/utils'
 import { formatVoucher } from '@/lib/bookkeeping/voucher-series-resolver'
 import { DetailSection, DefRow, DefEmpty } from '@/components/ui/detail-section'
 import { AttnLine } from '@/components/ui/attn-line'
-import { EmptyState, LoadError } from '@/components/ui/empty-state'
+import { EmptyState, LoadError, NotFoundState } from '@/components/ui/empty-state'
 import { HelpPopover } from '@/components/ui/help-popover'
 import JournalEntryAttachments from '@/components/bookkeeping/JournalEntryAttachments'
 import JournalEntryTransactionLinks from '@/components/bookkeeping/JournalEntryTransactionLinks'
@@ -113,7 +113,7 @@ export default function JournalEntryDetail({ id, initialCompanyId, initialData }
     company?.id ? ['journal-entry-detail', company.id, id] : null,
     async () => {
       const response = await fetch(`/api/bookkeeping/journal-entries/${id}/detail`)
-      if (!response.ok) throw new Error(t('error_load_failed'))
+      if (!response.ok) throw Object.assign(new Error(t('error_load_failed')), { status: response.status })
       return (await response.json()).data
     },
     { fallbackData: seed, revalidateOnFocus: false, shouldRetryOnError: false },
@@ -129,9 +129,10 @@ export default function JournalEntryDetail({ id, initialCompanyId, initialData }
     },
     { revalidateOnFocus: false, errorRetryCount: 2 },
   )
-  const entry = detail?.entry ?? null
+  const notFound = detailError?.status === 404
+  const entry = notFound ? null : detail?.entry ?? null
   const chain = detail?.chain ?? []
-  const error = detailError ? t('error_load_failed') : null
+  const error = detailError && !notFound ? t('error_load_failed') : null
   const [showCorrection, setShowCorrection] = useState(false)
   const [showCorrectIB, setShowCorrectIB] = useState(false)
   const [showSplitIB, setShowSplitIB] = useState(false)
@@ -314,15 +315,24 @@ export default function JournalEntryDetail({ id, initialCompanyId, initialData }
   if (error || !entry) {
     return (
       <div className="space-y-8">
-        <Link
-          href={listHref}
-          className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors"
-        >
-          <ArrowLeftIcon className="h-4 w-4" />
-          {t('back')}
-        </Link>
+        {!notFound && (
+          <Link
+            href={listHref}
+            className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors"
+          >
+            <ArrowLeftIcon className="h-4 w-4" />
+            {t('back')}
+          </Link>
+        )}
         {error ? (
           <LoadError title={error} onRetry={() => void fetchData()} />
+        ) : notFound ? (
+          <NotFoundState
+            title={t('error_not_found')}
+            description={t('not_found_hint')}
+            backHref={listHref}
+            backLabel={t('back')}
+          />
         ) : (
           <EmptyState title={t('error_not_found')} />
         )}
