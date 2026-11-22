@@ -24,7 +24,6 @@ import {
   consumeOAuthFlowState,
   createOAuthFlow,
   mintOAuthFlowHandoff,
-  newOAuthFlowId,
   peekOAuthFlowHandoff,
   peekOAuthFlowState,
   purgeExpiredOAuthFlows,
@@ -32,6 +31,7 @@ import {
   resolveOAuthOrigin,
   type OAuthFlow,
 } from '@/lib/auth/oauth-flows'
+import { newSkvOAuthState } from './lib/oauth-routing'
 import { storeTokens, getTokens, deleteTokens, getTokenHealth } from './lib/token-store'
 import { skvRequest, SkatteverketAuthError, getSkatteverketEnvironment, isApigwClientRefusal, skvUnreachable, skvUnavailableAnswer } from './lib/api-client'
 import { skvAuthCodeToStructured } from './lib/error-map'
@@ -607,7 +607,7 @@ export const skatteverketExtension: Extension = {
         const blocked = await requireSkvCapability({ ...ctx, companyId })
         if (blocked) return blocked
 
-        const state = newOAuthFlowId()
+        const state = newSkvOAuthState()
         let redirectUri = `${getSkvOauthBaseUrl()}/api/extensions/ext/skatteverket/callback`
 
         // Generate PKCE pair: verifier persisted server-side, challenge sent
