@@ -37,6 +37,7 @@ const unitProject = {
       '**/*.sim.test.ts',
       '**/.claude/**',
       '**/.next/**',
+      '**/.e2e/**',
     ],
     // A worker process runs many files in turn; isolate-modules.ts resets
     // the modules, mocks, globals and environment before each one (see
@@ -59,7 +60,7 @@ const pgRealProject = {
     include: ['**/*.pg.test.ts'],
     // `.next/standalone` holds a traced copy of these files after a local
     // build; 128 of them match this project's glob.
-    exclude: ['**/node_modules/**', '**/.claude/**', '**/.next/**'],
+    exclude: ['**/node_modules/**', '**/.claude/**', '**/.next/**', '**/.e2e/**'],
     // worker-database.ts first: it decides which database setup.ts opens.
     setupFiles: ['tests/pg/worker-database.ts', 'tests/pg/setup.ts'],
     globalSetup: ['tests/pg/global-setup.ts'],
@@ -86,7 +87,7 @@ const toolPgProject = {
     include: ['**/*.tool.test.ts'],
     // See the unit project's note: `.next/standalone` is a build artifact that
     // would otherwise be collected as a second copy of this suite.
-    exclude: ['**/node_modules/**', '**/.claude/**', '**/.next/**'],
+    exclude: ['**/node_modules/**', '**/.claude/**', '**/.next/**', '**/.e2e/**'],
     setupFiles: ['tests/tool-pg/setup.ts'],
     // The suite shares one database; parallel files would race on seeded rows.
     fileParallelism: false,
@@ -103,7 +104,7 @@ const simProject = {
     globals: true,
     environment: 'node' as const,
     include: ['**/*.sim.test.ts'],
-    exclude: ['**/node_modules/**', '**/.claude/**', '**/.next/**'],
+    exclude: ['**/node_modules/**', '**/.claude/**', '**/.next/**', '**/.e2e/**'],
     setupFiles: ['tests/sim/setup.ts'],
     fileParallelism: false,
     testTimeout: 60000,
