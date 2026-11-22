@@ -9826,7 +9826,7 @@
     "ext_arcim_bokio_token_label": "Integrationstoken",
     "ext_arcim_bokio_token_placeholder": "Klistra in din integrationstoken",
     "ext_arcim_bokio_company_id_label": "Företags-ID",
-    "ext_arcim_documents_title": "Valfria underlag från {provider}",
+    "ext_arcim_documents_title": "Underlag från {provider}",
     "ext_arcim_documents_discovering": "Letar efter underlag i {provider} …",
     "ext_arcim_documents_prompt": "{count, plural, one {# underlag i {provider} kan kopplas till sitt verifikat.} other {# underlag i {provider} kan kopplas till verifikaten.}}",
     "ext_arcim_documents_prompt_later": "Hämta nu, eller senare med \"Hämta underlag\" utan att köra migreringen igen.",
