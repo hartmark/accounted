@@ -2291,10 +2291,14 @@ function untransferredResultSentences(results: ImportResult[]): string[] {
  * the import did (renames, new accounts, derived IB, adjustments) behind
  * the info icon next to the status. Nothing gets a box.
  */
-function FiscalYearLine({ result, index }: { result: ImportResult; index: number }) {
+export function FiscalYearLine({ result, index }: { result: ImportResult; index: number }) {
   const t = useTranslations('extensions')
   const [showRemarks, setShowRemarks] = useState(false)
-  const status = (result.resync?.reviewCount ?? 0) > 0 ? {tone:'warning' as const,label:t('ext_arcim_resync_needs_review')} : getFYStatus(result)
+  const status = (result.resync?.reviewCount ?? 0) > 0
+    ? {tone:'warning' as const,label:t('ext_arcim_resync_needs_review')}
+    : result.success && !result.errors.length && result.resync?.added === 0 && !result.resync.metadataChanged
+      ? {tone:'success' as const,label:t('ext_arcim_resync_unchanged')}
+      : getFYStatus(result)
   const d = result.details
   const fyLabel = d?.fiscalYear
     ? formatFiscalYearLabel(d.fiscalYear.start, d.fiscalYear.end)
@@ -2328,7 +2332,9 @@ function FiscalYearLine({ result, index }: { result: ImportResult; index: number
       <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
         <span className="text-sm font-medium tabular-nums">{fyLabel}</span>
         <span className="text-sm text-muted-foreground tabular-nums">
-          {result.journalEntriesCreated.toLocaleString('sv-SE')} verifikationer
+          {result.resync
+            ? t('ext_arcim_resync_result_counts', { added: result.resync.added, unchanged: result.resync.unchanged })
+            : <>{result.journalEntriesCreated.toLocaleString('sv-SE')} verifikationer</>}
           {result.replacedPriorImport && result.replacedPriorImport.deletedEntries > 0 && (
             <> · ersatte {result.replacedPriorImport.deletedEntries.toLocaleString('sv-SE')} tidigare importerade</>
           )}
@@ -2370,6 +2376,26 @@ function FiscalYearLine({ result, index }: { result: ImportResult; index: number
           )}
         </span>
       </div>
+      {result.resync && result.resync.reviewCount > 0 && (
+        <details className="mt-2 text-sm">
+          <summary className="cursor-pointer text-attn">
+            {t('ext_arcim_resync_review_details', { count: result.resync.reviewCount })}
+          </summary>
+          <ul className="mt-2 space-y-1">
+            {result.resync.reviews.map((review, i) => (
+              <li key={review.sourceId + ':' + i} className="text-muted-foreground">
+                {review.entryId
+                  ? <Link href={'/bookkeeping/' + review.entryId} className="underline">{review.sourceId}</Link>
+                  : <span>{review.sourceId}</span>}
+                {' · '}{t('ext_arcim_resync_review_' + review.kind)}
+              </li>
+            ))}
+          </ul>
+          {result.resync.reviews.length < result.resync.reviewCount && <p className="mt-1 text-muted-foreground">
+            {t('ext_arcim_resync_review_more', { shown: result.resync.reviews.length, total: result.resync.reviewCount })}
+          </p>}
+        </details>
+      )}
       {result.errors.length > 0 && (
         <div className="mt-1 space-y-1">
           {result.errors.map((e, i) => (
