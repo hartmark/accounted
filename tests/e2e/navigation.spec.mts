@@ -134,7 +134,7 @@ test.describe('server-seeded voucher details', () => {
       })
       // Editing immediately must work even before SWR's background read has
       // populated its cache from the server-rendered seed.
-      await page.getByRole('button', { name: 'Redigera anteckning', exact: true }).click()
+      await page.getByRole('button', { name: /^(?:Redigera|Lägg till) anteckning$/ }).click()
       await page.getByPlaceholder('Intern anteckning...').fill(note)
       await measured(info, 'Save note before background refresh', BUDGET.interaction, async () => {
         await page.getByRole('button', { name: 'Spara', exact: true }).click()
