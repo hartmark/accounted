@@ -1,3 +1,4 @@
+import { matchImportedSkattekonto } from '../../skatteverket/lib/skattekonto-import-match'
 import { resolveMigrationNoops } from './migration-noop-review'
 import { SOURCE_HASH_BATCH_SIZE, sourceHashBaselines } from './migration-source-hashes'
 import { applyMigrationInvoiceCorrection } from '@/lib/providers/migration-corrections'
@@ -874,6 +875,11 @@ export async function runProviderMigrationWorker(options: {
             // The final advance releases the lease, so the subsequent lease-scoped
             // read deliberately finds no row. Resolve equivalent outcomes first.
             if (job.phase === 'settle') {
+              // SIE has finished before this register job starts. Match even
+              // when unrelated invoice records still require review.
+              if (job.provider === 'bokio') {
+                await matchImportedSkattekonto(supabase, job.company_id, job.user_id)
+              }
               await resolveMigrationNoops(supabase, { ...job, phase: 'completed', state: 'needs_attention' }, deadline - 5000)
                 .catch(() => { log.warn('Automatic review deferred', { jobId: job.id }) })
             }

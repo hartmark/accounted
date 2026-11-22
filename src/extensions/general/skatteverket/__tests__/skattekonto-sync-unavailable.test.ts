@@ -1,3 +1,6 @@
+vi.mock('../lib/skattekonto-import-match', () => ({
+  matchImportedSkattekonto: vi.fn().mockResolvedValue({ considered: 0, linked: 0, skipped: 0, failed: false }),
+}))
 /**
  * B07: when Skatteverket will not hand the skattekonto over because of a
  * STATE (no account yet: 404 / felkod 3; the consenting person not

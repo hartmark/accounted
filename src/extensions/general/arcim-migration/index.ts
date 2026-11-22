@@ -1,3 +1,4 @@
+import { matchImportedSkattekonto } from '../skatteverket/lib/skattekonto-import-match'
 import { requireWritePermission } from '@/lib/auth/require-write'
 import { checkExecutionBudget, ExecutionBudgetExceeded, ResponseByteLimitExceeded, withExecutionDeadline } from '@/lib/http/execution-budget'
 import { SIE_REQUEST_LIMITS, SieRequestLimitError } from './lib/sie-request-limits'
@@ -2503,7 +2504,7 @@ export const arcimMigrationExtension: Extension = {
         // Verify consent belongs to this company before mutating
         const { data: consent } = await supabase
           .from('provider_consents')
-          .select('id')
+          .select('id,provider')
           .eq('id', consentId)
           .eq('company_id', companyId)
           .single()
@@ -2514,7 +2515,11 @@ export const arcimMigrationExtension: Extension = {
 
         try {
           await acceptConsent(consentId)
-          return NextResponse.json({ success: true })
+          // Also covers SIE-only runs, which have no register worker.
+          const skattekonto = consent.provider === 'bokio'
+            ? await matchImportedSkattekonto(supabase, companyId, ctx.userId)
+            : undefined
+          return NextResponse.json({ success: true, ...(skattekonto ? { skattekonto } : {}) })
         } catch (error) {
           moduleLog.error('arcim accept failed', error as Error, { consentId })
           return errorResponseFromCode('PROVIDER_ACCEPT_FAILED', moduleLog, {

@@ -27,8 +27,9 @@ interface OpenRow {
  * persist them on `skattekonto_transactions.suggested_journal_entry_id`.
  *
  * Runs after every sync (and can be called after a booking/link mutation).
- * A proposal is never a link: only a click, or an approved staged operation,
- * moves it into journal_entry_id. Rows that are linked or ignored never
+ * A proposal is never a link: a click or an approved staged operation
+ * accepts it. Separately, matchImportedSkattekonto can link unambiguous
+ * already-posted imports after import or sync. Linked or ignored rows never
  * carry a proposal; rows whose candidate stopped qualifying get it cleared.
  *
  * Best-effort: logs and returns zeros on failure, never throws, so a

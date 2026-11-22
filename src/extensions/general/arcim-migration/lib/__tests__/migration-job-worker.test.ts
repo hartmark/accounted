@@ -1,3 +1,9 @@
+const { importedTaxMatch } = vi.hoisted(() => ({
+  importedTaxMatch: vi.fn().mockResolvedValue({ considered: 0, linked: 0, skipped: 0, failed: false }),
+}))
+vi.mock('../../../skatteverket/lib/skattekonto-import-match', () => ({
+  matchImportedSkattekonto: importedTaxMatch,
+}))
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { ProviderMigrationJob } from '@/lib/providers/migration-contract'
@@ -1757,5 +1763,23 @@ describe('Bokio open-balance reconciliation policy', () => {
     })
     await runProviderMigrationWorker({ supabase: db.supabase, jobId: db.job.id })
     expect(db.rpc).toHaveBeenCalledWith('commit_provider_migration_followup', expect.objectContaining({ p_records: [expect.objectContaining({ id: 'chunk', payment: null, error, review:{kind:'payment',reason} })] }))
+  })
+})
+
+
+describe('Bokio import completion tax-account matching', () => {
+  it('runs when the durable register job completes', async () => {
+    mocks.resolve.mockResolvedValue({ accessToken: 'token', consent: { provider: 'bokio', org_number: '556000-0000' } })
+    const db = database({ provider: 'bokio', phase: 'settle', resources: ['suppliers'] })
+    await runProviderMigrationWorker({ supabase: db.supabase, jobId: db.job.id })
+    expect(importedTaxMatch).toHaveBeenCalledWith(db.supabase, db.job.company_id, db.job.user_id)
+    expect(db.job.state).toBe('completed')
+  })
+
+  it('does not change other providers completion policy', async () => {
+    importedTaxMatch.mockClear()
+    const db = database({ phase: 'settle', resources: ['suppliers'] })
+    await runProviderMigrationWorker({ supabase: db.supabase, jobId: db.job.id })
+    expect(importedTaxMatch).not.toHaveBeenCalled()
   })
 })
