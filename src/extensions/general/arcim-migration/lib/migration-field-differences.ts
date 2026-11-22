@@ -1,3 +1,4 @@
+import { normalizeBokioUnitType } from '@/lib/providers/bokio/mapper'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { MigrationFieldDifference, MigrationResource } from '@/lib/providers/migration-contract'
 import type { SalesInvoiceDto, SupplierInvoiceDto, CustomerDto, SupplierDto } from '@/lib/providers/dto'
@@ -17,19 +18,22 @@ function scalar(value: unknown): MigrationFieldDifference['source'] {
 
 /** Compare actual local values, never the old source hash or a proposed write. */
 export function compareMigrationFields(source: Record<string, unknown>, local: Record<string, unknown>,
-  fields: readonly string[], line?: number): MigrationFieldDifference[] {
+  fields: readonly string[], line?: number, provider?: string): MigrationFieldDifference[] {
   return fields.flatMap(field => {
     if (!(field in source)) return []
+    const normalize = (value: unknown) => field === 'unit' && provider === 'bokio' && typeof value === 'string'
+      ? normalizeBokioUnitType(value) : value
     const a = scalar(source[field]), b = scalar(local[field])
     // PostgREST numeric columns may be strings; timestamps may spell UTC differently.
-    const equal = typeof a === 'number' && b != null && b !== '' ? Math.abs(a - Number(b)) < 0.000001
+    const equal = field === 'unit' && provider === 'bokio' ? scalar(normalize(a)) === scalar(normalize(b))
+      : typeof a === 'number' && b != null && b !== '' ? Math.abs(a - Number(b)) < 0.000001
       : field === 'paid_at' && a && b ? Date.parse(String(a)) === Date.parse(String(b)) : a === b
     return equal ? [] : [{ field, source: a, accounted: b, ...(line ? { line } : {}) }]
   })
 }
 
 export async function readMigrationFieldDifferences(db: SupabaseClient, companyId: string,
-  resource: MigrationResource, targetId: string, dto: unknown, revision?: { updatedAt?: string },
+  resource: MigrationResource, targetId: string, dto: unknown, revision?: { updatedAt?: string }, provider?: string,
 ): Promise<MigrationFieldDifference[] | null> {
   const sales = resource === 'salesInvoices', supplier = resource === 'supplierInvoices'
   const table = sales ? 'invoices' : supplier ? 'supplier_invoices' : resource
@@ -58,7 +62,7 @@ export async function readMigrationFieldDifferences(db: SupabaseClient, companyI
     if (!source || !current) {
       result.push({ field: 'invoice_line', source: source ? String(source.description || '') : null,
         accounted: current ? String(current.description || '') : null, line: i + 1 })
-    } else result.push(...compareMigrationFields(source, current, itemFields, i + 1))
+    } else result.push(...compareMigrationFields(source, current, itemFields, i + 1, provider))
   }
   return result.map(diff => ({...diff,currency:String(mapped.invoice.currency)}))
 }

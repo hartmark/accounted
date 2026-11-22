@@ -21,7 +21,7 @@ export async function resolveMigrationNoops(db: SupabaseClient, job: ProviderMig
     try {
       const revision: { updatedAt?: string } = {}
       const differences = await readMigrationFieldDifferences(db, job.company_id, row.resource,
-        row.target_id, openMigrationPayload(row.payload), revision)
+        row.target_id, openMigrationPayload(row.payload), revision, job.provider)
       // Failed/missing evidence and any actual field/line change stay reviewable.
       if (!differences || differences.length || !revision.updatedAt) continue
       const { data, error } = await db.rpc('acknowledge_provider_migration_noop', {

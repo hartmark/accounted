@@ -71,3 +71,13 @@ it('does not replace retained invoice rows with incomplete provider evidence', a
   expect((await call({ jobId, recordId, action: 'source', expectedUpdatedAt: updatedAt })).status).toBe(409)
   expect(mocks.rpc).not.toHaveBeenCalled()
 })
+
+it.each([{ jobs: { provider: 'bokio' } }, { jobs: [{ provider: 'bokio' }] }])('acknowledges equivalent Bokio units without replacing booked invoice rows', async ({ jobs }) => {
+  db.enqueue({ data: { ...row, migration_jobs: jobs }, error: null })
+  mocks.differences.mockResolvedValueOnce([])
+  expect((await call({ jobId, recordId, action: 'source', expectedUpdatedAt: updatedAt })).status).toBe(200)
+  expect(mocks.differences).toHaveBeenCalledWith(db.supabase, 'company-1', 'supplierInvoices',
+    'invoice-1', { id: 'source-1' }, undefined, 'bokio')
+  expect(mocks.rpc).toHaveBeenCalledWith('decide_provider_migration_record',
+    expect.objectContaining({ p_values: {}, p_items: null, p_expected_updated_at: updatedAt }))
+})

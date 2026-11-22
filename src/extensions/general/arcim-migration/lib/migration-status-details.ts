@@ -22,7 +22,7 @@ export async function readMigrationExtraDetails(supabase:SupabaseClient, company
   for (const row of (changes ?? []).filter(row => row.receipt?.reason === 'source_changed')) {
     try {
       const revision: { updatedAt?: string } = {}
-      const differences = await readMigrationFieldDifferences(ctx.supabase,ctx.companyId,row.resource,row.target_id,openMigrationPayload(row.payload),revision)
+      const differences = await readMigrationFieldDifferences(ctx.supabase,ctx.companyId,row.resource,row.target_id,openMigrationPayload(row.payload),revision,job.provider)
       if (differences && !differences.length) {
         // The imported source snapshot can be more complete than a provider
         // list response. Explain that actual hash change instead of implying

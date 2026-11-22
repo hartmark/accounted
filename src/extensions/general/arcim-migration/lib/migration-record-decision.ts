@@ -24,7 +24,7 @@ export async function decideMigrationRecord(request: Request, ctx: ExtensionCont
   if (!permission.ok) return permission.response
   const body = input.data
   const { data: row, error } = await ctx.supabase.from('migration_job_chunks')
-    .select('id,resource,target_id,payload,error_code')
+    .select('id,resource,target_id,payload,error_code,migration_jobs!inner(provider)')
     .eq('company_id', ctx.companyId).eq('job_id', body.jobId).eq('id', body.recordId).maybeSingle()
   if (error) return NextResponse.json({ error: { code: 'MIGRATION_REVIEW_FAILED' } }, { status: 500 })
   if (!row) return NextResponse.json({ error: { code: 'NOT_FOUND' } }, { status: 404 })
@@ -34,7 +34,9 @@ export async function decideMigrationRecord(request: Request, ctx: ExtensionCont
     try {
       const resource = row.resource as MigrationResource
       const dto = openMigrationPayload(row.payload)
-      const differences = await readMigrationFieldDifferences(ctx.supabase, ctx.companyId, resource, row.target_id, dto)
+      const sourceJob = row.migration_jobs as { provider?: string } | { provider?: string }[]
+      const provider = Array.isArray(sourceJob) ? sourceJob[0]?.provider : sourceJob?.provider
+      const differences = await readMigrationFieldDifferences(ctx.supabase, ctx.companyId, resource, row.target_id, dto, undefined, provider)
       if (!differences) return NextResponse.json({ error: { code: 'NOT_FOUND' } }, { status: 404 })
       const mapped = resource === 'supplierInvoices' ? mapSupplierInvoice(dto as SupplierInvoiceDto, ctx.userId, ctx.companyId, '')
         : resource === 'salesInvoices' ? mapSalesInvoice(dto as SalesInvoiceDto, ctx.userId, ctx.companyId, '') : null
